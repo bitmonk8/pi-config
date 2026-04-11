@@ -94,14 +94,22 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
+// Resolve the bundled agents directory relative to this file
+const BUNDLED_AGENTS_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "agents");
+
 export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
 	const userDir = path.join(getAgentDir(), "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
+	// Load bundled agents first (lowest priority), then user, then project
+	const bundledAgents = loadAgentsFromDir(BUNDLED_AGENTS_DIR, "user");
 	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
 	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
 
 	const agentMap = new Map<string, AgentConfig>();
+
+	// Bundled agents are always loaded as baseline (can be overridden by user/project)
+	for (const agent of bundledAgents) agentMap.set(agent.name, agent);
 
 	if (scope === "both") {
 		for (const agent of userAgents) agentMap.set(agent.name, agent);
