@@ -1,0 +1,12 @@
+{
+  "name": "pi-config",
+  "version": "1.0.0",
+  "description": "Personal pi coding agent configuration for bitmonk8",
+  "keywords": ["pi-package"],
+  "author": "Thomas Andersen <thomas.andersen@gmail.com>",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "prompts": ["./prompts"]
+  }
+}
