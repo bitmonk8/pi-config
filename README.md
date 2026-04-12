@@ -12,26 +12,56 @@ pi install git:git@github.com:bitmonk8/pi-config
 
 ### Extensions
 
-- **subagent** — Delegate tasks to specialized subagents with isolated context windows. Supports single, parallel, and chained execution.
+- **subagent** — Delegate tasks to specialized subagents with isolated context windows. Supports single, parallel (up to 16, 8 concurrent), and chained execution.
 
 ### Agents
 
-Agent definitions used by the subagent extension (placed in `agents/`):
+#### General Purpose
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | worker | Sonnet | General-purpose, full tool access |
-| scout | Haiku | Fast codebase recon |
-| planner | Sonnet | Implementation planning (read-only) |
-| reviewer | Sonnet | Code review |
+| implementer | Sonnet | Spec → code → docs → delete spec |
+| fixer | Sonnet | Apply minimal fix for a review finding, verify compilation/tests |
+| consolidator | Sonnet | Deduplicate and organize review findings |
+| triage-assessor | Sonnet | Validate findings, filter false positives, assign cost/benefit metadata |
+
+#### Narrow Review Lenses (per-file, Haiku)
+
+| Agent | Focus |
+|-------|-------|
+| review-lens-correctness | Logic errors, race conditions, broken invariants |
+| review-lens-simplification | Unnecessary complexity, over-abstraction |
+| review-lens-testing | Missing coverage, silently skipping tests |
+| review-lens-cruft | Stale comments, dead code, outdated TODOs |
+| review-lens-separation | Single-responsibility violations |
+| review-lens-naming | Names that don't reflect behavior |
+| review-lens-placement | Code in the wrong location/layer |
+| review-lens-doc-mismatch | Docs that don't match implementation |
+| review-lens-error-handling | Silent failures, swallowed errors |
+
+#### Broad Review Lenses (cross-file, Sonnet)
+
+| Agent | Focus |
+|-------|-------|
+| review-lens-correctness-broad | Interface contract violations across modules |
+| review-lens-simplification-broad | Unnecessary abstraction layers |
+| review-lens-separation-broad | Overlapping modules, circular dependencies |
+| review-lens-naming-broad | Inconsistent naming across files |
+| review-lens-placement-broad | Files in wrong part of project structure |
+| review-lens-doc-mismatch-broad | Systemic doc-code divergence |
 
 ### Prompt Templates
 
-| Command | Workflow |
-|---------|----------|
-| `/implement <task>` | scout → planner → worker |
-| `/scout-and-plan <task>` | scout → planner |
-| `/implement-and-review <task>` | worker → reviewer → worker |
+| Command | Description |
+|---------|-------------|
+| `/review [target]` | Run 9 review lenses in parallel on changes (default: uncommitted) |
+| `/review-fix-loop <policy>` | Autonomous review → triage → fix loop until clean |
+| `/implement <spec>` | Implement spec + automatic review/fix loop |
+| `/project-audit` | Full project audit: narrow + broad lenses, triage, interactive fixes |
+| `/decruft <target>` | Remove historical cruft from files |
+| `/doc-conv <document>` | Interactive conversation about a document |
+| `/new-session` | Orient on project status and pick next work |
 
 ## Update
 

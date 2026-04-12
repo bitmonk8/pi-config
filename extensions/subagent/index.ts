@@ -24,8 +24,8 @@ import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 
-const MAX_PARALLEL_TASKS = 8;
-const MAX_CONCURRENCY = 4;
+const MAX_PARALLEL_TASKS = 16;
+const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 
 function formatTokens(count: number): string {
