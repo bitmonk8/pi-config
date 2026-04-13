@@ -28,13 +28,17 @@ const MAX_PARALLEL_TASKS = 16;
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 
-/** Read _activeProfile from settings.json so child pi processes inherit the parent's profile. */
+/** Read _activeProfile from settings.json as initial value; updated at runtime via profile:changed event. */
+let cachedActiveProfile: string | undefined;
+
 function readActiveProfile(): string | undefined {
+	if (cachedActiveProfile) return cachedActiveProfile;
 	const settingsPath = path.join(getAgentDir(), "settings.json");
 	try {
 		const raw = fs.readFileSync(settingsPath, "utf-8");
 		const settings = JSON.parse(raw);
-		return settings._activeProfile ?? undefined;
+		cachedActiveProfile = settings._activeProfile ?? undefined;
+		return cachedActiveProfile;
 	} catch {
 		return undefined;
 	}
@@ -446,6 +450,13 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
+	// Listen for profile changes from the work-profile extension so child
+	// pi processes inherit the correct provider/tier.
+	pi.events.on("profile:changed", (data) => {
+		const { profile } = data as { profile: string };
+		cachedActiveProfile = profile;
+	});
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
