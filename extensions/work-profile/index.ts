@@ -17,7 +17,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
@@ -69,19 +70,32 @@ function getSettingsJsonPath(): string {
 	return join(getAgentDir(), "settings.json");
 }
 
-/** Load profiles.json from next to this extension, or from ~/.pi/agent/ */
+/** Resolve the package root (directory containing package.json). */
+function getPackageRoot(): string {
+	const extensionDir = dirname(fileURLToPath(import.meta.url));
+	// Walk up until we find package.json
+	let dir = extensionDir;
+	for (let i = 0; i < 10; i++) {
+		if (existsSync(join(dir, "package.json"))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	return extensionDir;
+}
+
+/** Load profiles.json from the package root, or from ~/.pi/agent/ */
 function loadProfiles(): ProfilesConfig {
 	const locations = [
-		join(dirname(import.meta.url.replace("file:///", "").replace("file://", "")), "profiles.json"),
+		join(getPackageRoot(), "profiles.json"),
 		join(getAgentDir(), "profiles.json"),
 	];
 	for (const loc of locations) {
-		const p = loc.replace(/\\/g, "/");
-		if (existsSync(p)) {
+		if (existsSync(loc)) {
 			try {
-				return JSON.parse(readFileSync(p, "utf-8"));
+				return JSON.parse(readFileSync(loc, "utf-8"));
 			} catch (err) {
-				console.error(`Failed to parse ${p}: ${err}`);
+				console.error(`Failed to parse ${loc}: ${err}`);
 			}
 		}
 	}
