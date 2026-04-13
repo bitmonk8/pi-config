@@ -189,6 +189,7 @@ function writeSettings(profile: Profile, profileName: string): void {
 export default function workProfile(pi: ExtensionAPI) {
 	let profiles: ProfilesConfig = {};
 	let activeProfileName: string | undefined;
+	let activeTier: typeof TIER_NAMES[number] | undefined;
 
 	pi.registerFlag("profile", {
 		description: "Work profile to activate (e.g. unity, unity-pilot, personal)",
@@ -224,6 +225,7 @@ export default function workProfile(pi: ExtensionAPI) {
 		}
 
 		activeProfileName = name;
+		activeTier = defaultTier;
 		updateStatus(ctx);
 		return true;
 	}
@@ -231,8 +233,11 @@ export default function workProfile(pi: ExtensionAPI) {
 	// ── Status ────────────────────────────────────────────────────────
 
 	function updateStatus(ctx: ExtensionContext) {
-		if (activeProfileName) {
-			ctx.ui.setStatus("profile", ctx.ui.theme.fg("accent", `profile:${activeProfileName}`));
+		const parts: string[] = [];
+		if (activeProfileName) parts.push(activeProfileName);
+		if (activeTier) parts.push(activeTier);
+		if (parts.length > 0) {
+			ctx.ui.setStatus("profile", ctx.ui.theme.fg("accent", parts.join("/")));
 		} else {
 			ctx.ui.setStatus("profile", undefined);
 		}
@@ -281,7 +286,93 @@ export default function workProfile(pi: ExtensionAPI) {
 		},
 	});
 
-	// ── Shortcut ──────────────────────────────────────────────────────
+	// ── Tier switching ────────────────────────────────────────────────
+
+	async function applyTier(tier: typeof TIER_NAMES[number], ctx: ExtensionContext): Promise<boolean> {
+		if (!activeProfileName) {
+			ctx.ui.notify("No active profile. Use /profile first.", "warning");
+			return false;
+		}
+		const profile = profiles[activeProfileName];
+		if (!profile) return false;
+
+		const tierModel = profile.tiers[tier];
+		const model = ctx.modelRegistry.find(profile.provider, tierModel.id);
+		if (model) {
+			const ok = await pi.setModel(model);
+			if (!ok) {
+				ctx.ui.notify(`No API key for ${profile.provider}/${tierModel.id}`, "warning");
+				return false;
+			}
+		} else {
+			ctx.ui.notify(`Model ${profile.provider}/${tierModel.id} not found`, "warning");
+			return false;
+		}
+
+		activeTier = tier;
+		updateStatus(ctx);
+		return true;
+	}
+
+	pi.registerCommand("tier", {
+		description: "Switch model tier (fast, balanced, smart)",
+		getArgumentCompletions: (prefix: string) => {
+			const filtered = TIER_NAMES.filter((t) => t.startsWith(prefix));
+			return filtered.length > 0 ? filtered.map((t) => ({ value: t, label: t })) : null;
+		},
+		handler: async (args, ctx) => {
+			if (args?.trim()) {
+				const tier = args.trim() as typeof TIER_NAMES[number];
+				if (!TIER_NAMES.includes(tier)) {
+					ctx.ui.notify(`Unknown tier "${tier}". Available: ${TIER_NAMES.join(", ")}`, "error");
+					return;
+				}
+				const ok = await applyTier(tier, ctx);
+				if (ok) ctx.ui.notify(`Tier: ${tier}`, "info");
+				return;
+			}
+
+			// Interactive selector
+			if (!activeProfileName) {
+				ctx.ui.notify("No active profile. Use /profile first.", "warning");
+				return;
+			}
+			const profile = profiles[activeProfileName];
+			if (!profile) return;
+
+			const displayNames = TIER_NAMES.map((tier) => {
+				const m = profile.tiers[tier];
+				const isActive = tier === activeTier;
+				return isActive ? `${tier} (active) — ${m.name}` : `${tier} — ${m.name}`;
+			});
+
+			const choice = await ctx.ui.select("Select model tier:", displayNames);
+			if (!choice) return;
+
+			const tierName = choice.split(" ")[0] as typeof TIER_NAMES[number];
+			const ok = await applyTier(tierName, ctx);
+			if (ok) ctx.ui.notify(`Tier: ${tierName}`, "info");
+		},
+	});
+
+	pi.registerShortcut(Key.ctrlShift("t"), {
+		description: "Cycle model tiers (fast → balanced → smart)",
+		handler: async (ctx) => {
+			if (!activeProfileName) {
+				ctx.ui.notify("No active profile. Use /profile first.", "warning");
+				return;
+			}
+
+			const currentIdx = activeTier ? TIER_NAMES.indexOf(activeTier) : -1;
+			const nextIdx = (currentIdx + 1) % TIER_NAMES.length;
+			const nextTier = TIER_NAMES[nextIdx];
+
+			const ok = await applyTier(nextTier, ctx);
+			if (ok) ctx.ui.notify(`Tier: ${nextTier}`, "info");
+		},
+	});
+
+	// ── Profile shortcut ─────────────────────────────────────────────
 
 	pi.registerShortcut(Key.ctrlShift("p"), {
 		description: "Cycle work profiles",
