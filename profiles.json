@@ -11,6 +11,18 @@
     },
     "default": "smart"
   },
+  "personal": {
+    "description": "Personal OpenRouter account",
+    "provider": "openrouter",
+    "api": "openai-completions",
+    "apiKey": "PERSONAL_OPENROUTER_KEY",
+    "tiers": {
+      "fast":     { "id": "anthropic/claude-haiku-4.5",  "name": "claude-haiku-4.5" },
+      "balanced": { "id": "anthropic/claude-sonnet-4.6",  "name": "claude-sonnet-4.6" },
+      "smart":    { "id": "anthropic/claude-opus-4.6",   "name": "claude-opus-4.6" }
+    },
+    "default": "smart"
+  },
   "unity-pilot": {
     "description": "Unity Pilot proxy (Anthropic models, Key2)",
     "provider": "unity-pilot",

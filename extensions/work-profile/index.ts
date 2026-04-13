@@ -19,7 +19,7 @@
  *   /tier                 — show tier selector
  *   /tier fast            — switch directly
  *   Ctrl+Shift+T          — cycle tiers
- *   /refresh-models       — rediscover models from Unity LiteLLM proxy
+ *   /refresh-models       — rediscover models from Unity LiteLLM and OpenRouter
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -304,29 +304,121 @@ function selectDefaultOpus(models: ModelEntry[]): ModelEntry | undefined {
 	})[0];
 }
 
+// ── OpenRouter model discovery ──────────────────────────────────────────
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
+
+/** Only these modalities are valid in pi's models.json schema. */
+const VALID_INPUT_MODALITIES = new Set(["text", "image"]);
+
+interface OpenRouterModel {
+	id: string;
+	name: string;
+	architecture?: {
+		input_modalities?: string[];
+		output_modalities?: string[];
+	};
+	context_length?: number;
+	top_provider?: {
+		max_completion_tokens?: number | null;
+	};
+	pricing?: {
+		prompt?: string;
+		completion?: string;
+	};
+	supported_parameters?: string[];
+}
+
+async function fetchOpenRouterModels(key: string): Promise<OpenRouterModel[]> {
+	const resp = await fetch(`${OPENROUTER_BASE_URL}/v1/models`, {
+		headers: { Authorization: `Bearer ${key}` },
+	});
+	if (!resp.ok) throw new Error(`OpenRouter /v1/models: ${resp.status} ${resp.statusText}`);
+	const data = await resp.json() as { data: OpenRouterModel[] };
+	return data.data;
+}
+
+/**
+ * Convert OpenRouter model list to pi ModelEntry[].  Only text-output
+ * models are included; input modalities are clamped to text|image (the
+ * only values pi's schema allows).
+ */
+function buildOpenRouterModels(raws: OpenRouterModel[]): ModelEntry[] {
+	return raws
+		.filter((m) => {
+			const out = m.architecture?.output_modalities ?? ["text"];
+			return out.includes("text");
+		})
+		.map((m) => {
+			// Clamp to text|image only — drop audio, video, file etc.
+			const inp = (m.architecture?.input_modalities ?? ["text"])
+				.map((mod) => (mod === "file" ? "text" : mod))
+				.filter((mod) => VALID_INPUT_MODALITIES.has(mod))
+				.filter((v, i, a) => a.indexOf(v) === i);
+
+			const inputCost = parseFloat(m.pricing?.prompt ?? "0") * 1_000_000;
+			const outputCost = parseFloat(m.pricing?.completion ?? "0") * 1_000_000;
+
+			const reasoning =
+				(m.supported_parameters ?? []).includes("reasoning") ||
+				(m.supported_parameters ?? []).includes("thinking");
+
+			return {
+				id: m.id,
+				name: m.id,
+				reasoning,
+				input: inp.length > 0 ? inp : ["text"],
+				contextWindow: m.context_length ?? 128_000,
+				maxTokens: m.top_provider?.max_completion_tokens ?? 16_384,
+				cost: {
+					input: inputCost,
+					output: outputCost,
+					cacheRead: 0,
+					cacheWrite: 0,
+				},
+			};
+		});
+}
+
+// ── Refresh orchestration ───────────────────────────────────────────────
+
 interface RefreshResult {
 	unityCount: number;
 	unityResponsesCount: number;
 	pilotCount: number;
+	openrouterCount: number;
 	defaultModel: string | undefined;
 }
 
 async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 	const key1 = process.env["UNITY_LITELLM_KEY1"];
 	const key2 = process.env["UNITY_LITELLM_KEY2"];
+	const orKey = process.env["PERSONAL_OPENROUTER_KEY"];
+
 	if (!key1) throw new Error("UNITY_LITELLM_KEY1 environment variable is not set");
 	if (!key2) throw new Error("UNITY_LITELLM_KEY2 environment variable is not set");
 
-	const [modelInfo, key1Ids, key2Ids] = await Promise.all([
+	// Fetch LiteLLM (required) and OpenRouter (optional) in parallel
+	const liteLLMFetch = Promise.all([
 		fetchModelInfo(key1),
 		fetchModelIds(key1),
 		fetchModelIds(key2),
 	]);
+
+	const orFetch = orKey
+		? fetchOpenRouterModels(orKey).catch((err) => {
+			console.warn(`OpenRouter fetch failed (skipping): ${err?.message ?? err}`);
+			return [] as OpenRouterModel[];
+		})
+		: Promise.resolve([] as OpenRouterModel[]);
+
+	const [[modelInfo, key1Ids, key2Ids], orRaw] = await Promise.all([liteLLMFetch, orFetch]);
 	if (signal?.aborted) throw new Error("aborted");
 
 	const unityModels = buildModels(key1Ids, modelInfo, "chat");
 	const unityResponsesModels = buildModels(key1Ids, modelInfo, "responses");
 	const pilotModels = buildModels(key2Ids, modelInfo, "chat");
+	const orModels = buildOpenRouterModels(orRaw);
 
 	// Preserve the existing "active" provider so the current profile
 	// survives the refresh.
@@ -353,6 +445,20 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 			models: pilotModels,
 		},
 	};
+
+	// Only add OpenRouter provider when we got data
+	if (orModels.length > 0) {
+		providers["openrouter"] = {
+			baseUrl: `${OPENROUTER_BASE_URL}/v1`,
+			api: "openai-completions",
+			apiKey: "PERSONAL_OPENROUTER_KEY",
+			models: orModels,
+		};
+	} else if (existing.providers["openrouter"]) {
+		// Preserve previous data so existing sessions aren't broken
+		providers["openrouter"] = existing.providers["openrouter"];
+	}
+
 	if (activeProvider) providers[ACTIVE_PROVIDER] = activeProvider;
 
 	writeFileSync(getModelsJsonPath(), JSON.stringify({ providers }, null, 2), "utf-8");
@@ -369,6 +475,7 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 		unityCount: unityModels.length,
 		unityResponsesCount: unityResponsesModels.length,
 		pilotCount: pilotModels.length,
+		openrouterCount: orModels.length,
 		defaultModel: defaultModel?.name,
 	};
 }
@@ -400,7 +507,10 @@ export default function workProfile(pi: ExtensionAPI) {
 		// 2. Update settings.json defaults
 		writeSettings(profile, name);
 
-		// 3. Switch the current session's model to the profile default
+		// 3. Reload in-memory model registry so newly-written providers are visible
+		ctx.modelRegistry.refresh();
+
+		// 4. Switch the current session's model to the profile default
 		const defaultTier = profile.default ?? "smart";
 		const defaultModel = profile.tiers[defaultTier];
 		const model = ctx.modelRegistry.find(profile.provider, defaultModel.id);
@@ -607,13 +717,17 @@ export default function workProfile(pi: ExtensionAPI) {
 	pi.registerCommand("refresh-models", {
 		description: "Rediscover available models from Unity LiteLLM proxy",
 		handler: async (_args, ctx) => {
-			ctx.ui.notify("Fetching models from Unity LiteLLM...", "info");
+			ctx.ui.notify("Fetching models from Unity LiteLLM and OpenRouter...", "info");
 			try {
 				const result = await doRefreshModels(ctx.signal);
+				// Reload in-memory registry so new providers are immediately usable
+				ctx.modelRegistry.refresh();
 				const msg = [
 					`unity: ${result.unityCount} chat`,
 					`unity-responses: ${result.unityResponsesCount}`,
 					`unity-pilot: ${result.pilotCount} chat`,
+					result.openrouterCount > 0 ? `openrouter: ${result.openrouterCount}` : "",
+					!process.env["PERSONAL_OPENROUTER_KEY"] ? "openrouter: skipped (no key)" : "",
 					result.defaultModel ? `default: ${result.defaultModel}` : "",
 				].filter(Boolean).join("  |  ");
 				ctx.ui.notify(msg, "success");
