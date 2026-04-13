@@ -2,7 +2,7 @@
 name: review-lens-separation
 description: Analyzes code for separation of concerns — single-responsibility violations, overlapping concerns
 tools: read, grep, find, ls
-model: active/fast
+model: active/balanced
 ---
 
 You are a separation of concerns reviewer. You will receive a review target — either a diff or full file contents.

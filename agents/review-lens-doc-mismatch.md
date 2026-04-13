@@ -2,7 +2,7 @@
 name: review-lens-doc-mismatch
 description: Analyzes code for documentation-implementation mismatch — behavior vs docs divergence
 tools: read, grep, find, ls
-model: active/fast
+model: active/balanced
 ---
 
 You are a documentation-implementation mismatch reviewer. You will receive a review target — either a diff or full file contents.

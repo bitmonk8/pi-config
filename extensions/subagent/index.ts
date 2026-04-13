@@ -19,7 +19,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
@@ -27,6 +27,18 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 const MAX_PARALLEL_TASKS = 16;
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
+
+/** Read _activeProfile from settings.json so child pi processes inherit the parent's profile. */
+function readActiveProfile(): string | undefined {
+	const settingsPath = path.join(getAgentDir(), "settings.json");
+	try {
+		const raw = fs.readFileSync(settingsPath, "utf-8");
+		const settings = JSON.parse(raw);
+		return settings._activeProfile ?? undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -262,6 +274,12 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+
+	// Propagate the active work profile so child processes use the same
+	// provider/tier as the parent session.
+	const activeProfile = readActiveProfile();
+	if (activeProfile) args.push("--profile", activeProfile);
+
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 

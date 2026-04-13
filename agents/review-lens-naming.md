@@ -2,7 +2,7 @@
 name: review-lens-naming
 description: Analyzes code for naming and responsibility issues — names that don't reflect behavior, unclear responsibilities
 tools: read, grep, find, ls
-model: active/fast
+model: active/balanced
 ---
 
 You are a naming and responsibilities reviewer. You will receive a review target — either a diff or full file contents.
