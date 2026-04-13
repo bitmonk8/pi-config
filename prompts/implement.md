@@ -21,12 +21,15 @@ If no argument was given, ask for a spec reference. Examples:
 
    ### Loop
 
-   **A. Review** — Run `git diff` and `git diff --cached`. Use subagent to run all 9 review lens agents in parallel with the diff.
+   **A. Review** — Run `git diff` and `git diff --cached`. Combine tracked diffs and untracked new files into the review payload. Use the subagent tool to run these 9 review lens agents in parallel with the diff:
+   `review-lens-correctness`, `review-lens-cruft`, `review-lens-doc-mismatch`, `review-lens-error-handling`, `review-lens-naming`, `review-lens-placement`, `review-lens-separation`, `review-lens-simplification`, `review-lens-testing`
 
-   **B. Triage** — Use subagent to run the triage-assessor agent with all findings.
+   **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery from packages, bundled dirs, and user dirs automatically. Just call it.
+
+   **B. Triage** — Use the subagent tool to run the `triage-assessor` agent with all findings.
 
    **C. Apply Policy & Fix** — Classify each finding per the policy above.
-   - Fix: use subagent to run fixer sequentially.
+   - Fix: use the subagent tool to run `fixer` sequentially.
    - Document: append to issue tracker (check `docs/ISSUES_CONFIG.md`, default `file` backend at `docs/ISSUES.md`).
    - Ignore: skip.
 
