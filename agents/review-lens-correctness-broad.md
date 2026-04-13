@@ -2,7 +2,7 @@
 name: review-lens-correctness-broad
 description: Cross-file correctness — interface contract violations, inconsistent assumptions between modules
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a cross-file correctness reviewer. You will receive a project structure summary and can read any file as needed.

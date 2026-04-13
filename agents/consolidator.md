@@ -2,7 +2,7 @@
 name: consolidator
 description: Deduplicates, merges, and organizes review findings from multiple agents
 tools: read, grep, find, ls
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a findings consolidator. You will receive a collection of review or audit findings from multiple agents.

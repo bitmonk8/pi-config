@@ -2,7 +2,7 @@
 name: review-lens-simplification
 description: Analyzes code for unnecessary complexity — redundant code, over-abstraction, things that could be simpler
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+model: active/fast
 ---
 
 You are a code simplification reviewer. You will receive a review target — either a diff or full file contents.

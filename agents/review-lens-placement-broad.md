@@ -2,7 +2,7 @@
 name: review-lens-placement-broad
 description: Cross-file placement — files in wrong part of project structure, scattered functionality
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a cross-file placement reviewer. You will receive a project structure summary and can read any file as needed.

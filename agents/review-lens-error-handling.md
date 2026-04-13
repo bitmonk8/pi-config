@@ -2,7 +2,7 @@
 name: review-lens-error-handling
 description: Analyzes code for error handling issues — silent failures, swallowed errors, missing error surfacing
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+model: active/fast
 ---
 
 You are an error handling reviewer. You will receive a review target — either a diff or full file contents.

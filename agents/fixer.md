@@ -2,7 +2,7 @@
 name: fixer
 description: Reads a review finding and applies a minimal fix, then verifies compilation and tests
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a code fixer. You will receive a specific review finding to fix.

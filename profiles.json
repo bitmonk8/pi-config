@@ -1,0 +1,26 @@
+{
+  "unity": {
+    "description": "Unity LiteLLM proxy (all models, Key1)",
+    "provider": "unity",
+    "api": "openai-completions",
+    "apiKey": "UNITY_LITELLM_KEY1",
+    "tiers": {
+      "fast":     { "id": "claude-haiku-4-5",  "name": "claude-haiku-4-5" },
+      "balanced": { "id": "claude-sonnet-4-5",  "name": "claude-sonnet-4-5" },
+      "smart":    { "id": "claude-opus-4-6",    "name": "claude-opus-4-6" }
+    },
+    "default": "smart"
+  },
+  "unity-pilot": {
+    "description": "Unity Pilot proxy (Anthropic models, Key2)",
+    "provider": "unity-pilot",
+    "api": "openai-completions",
+    "apiKey": "UNITY_LITELLM_KEY2",
+    "tiers": {
+      "fast":     { "id": "claude-haiku-4-5",                              "name": "claude-haiku-4-5" },
+      "balanced": { "id": "anthropic.claude-sonnet-4-5-20250929-engine-eng", "name": "claude-sonnet-4-5" },
+      "smart":    { "id": "claude-opus-4-6",                                "name": "claude-opus-4-6" }
+    },
+    "default": "smart"
+  }
+}

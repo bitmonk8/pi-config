@@ -2,7 +2,7 @@
 name: review-lens-correctness
 description: Analyzes code for correctness — logic errors, off-by-one, race conditions, missing error handling, broken invariants
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+model: active/fast
 ---
 
 You are a code correctness reviewer. You will receive a review target — either a diff or full file contents.

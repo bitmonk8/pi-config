@@ -2,7 +2,7 @@
 name: review-lens-doc-mismatch-broad
 description: Systemic doc-code divergence — documented features that don't exist, architecture docs that don't match reality
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a systemic documentation-implementation mismatch reviewer. You will receive a project structure summary and can read any file as needed.

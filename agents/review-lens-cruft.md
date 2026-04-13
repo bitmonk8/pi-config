@@ -2,7 +2,7 @@
 name: review-lens-cruft
 description: Analyzes code for historical cruft — stale comments, dead code, outdated references, leftover TODOs
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+model: active/fast
 ---
 
 You are a historical cruft reviewer. You will receive a review target — either a diff or full file contents.

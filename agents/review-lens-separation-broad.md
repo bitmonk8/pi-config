@@ -2,7 +2,7 @@
 name: review-lens-separation-broad
 description: Cross-file separation of concerns — overlapping modules, circular dependencies, unclear ownership
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a cross-file separation of concerns reviewer. You will receive a project structure summary and can read any file as needed.

@@ -2,7 +2,7 @@
 name: review-lens-naming-broad
 description: Cross-file naming — same concept named differently across files, misleading module names
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are a cross-file naming consistency reviewer. You will receive a project structure summary and can read any file as needed.

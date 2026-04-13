@@ -2,7 +2,7 @@
 name: implementer
 description: Implements a spec — writes code, updates docs, deletes the spec file
 tools: read, grep, find, ls, bash
-model: claude-sonnet-4-5
+model: active/balanced
 ---
 
 You are an implementer. You will receive a reference to a spec, feature request, or task description.
