@@ -264,21 +264,19 @@ export default function workProfile(pi: ExtensionAPI) {
 				return;
 			}
 
-			const items = names.map((name) => {
+			const displayNames = names.map((name) => {
 				const p = profiles[name];
 				const isActive = name === activeProfileName;
-				const desc = p.description ?? `${p.provider} (${Object.values(p.tiers).map((t) => t.name).join(", ")})`;
-				return {
-					value: name,
-					label: isActive ? `${name} (active)` : name,
-					description: desc,
-				};
+				const desc = p.description ?? p.provider;
+				return isActive ? `${name} (active) — ${desc}` : `${name} — ${desc}`;
 			});
 
-			const choice = await ctx.ui.select("Select work profile:", items);
+			const choice = await ctx.ui.select("Select work profile:", displayNames);
 			if (!choice) return;
 
-			const ok = await applyProfile(choice, ctx);
+			// Extract profile name from display string
+			const profileName = choice.split(" ")[0];
+			const ok = await applyProfile(profileName, ctx);
 			if (ok) ctx.ui.notify(`Profile "${choice}" activated`, "info");
 		},
 	});
