@@ -60,6 +60,7 @@ pi install git:git@github.com:bitmonk8/pi-config
 | `/implement <spec>` | Implement spec + automatic review/fix loop |
 | `/project-audit` | Full project audit: narrow + broad lenses, triage, interactive fixes |
 | `/decruft <target>` | Remove historical cruft from files |
+| `/commit-push-check` | Lint (Rust: clippy/fmt), commit, push, verify CI green |
 | `/doc-conv <document>` | Interactive conversation about a document |
 | `/new-session` | Orient on project status and pick next work |
 
