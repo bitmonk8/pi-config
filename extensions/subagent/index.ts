@@ -28,17 +28,27 @@ const MAX_PARALLEL_TASKS = 16;
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 
-/** Read _activeProfile from settings.json as initial value; updated at runtime via profile:changed event. */
-let cachedActiveProfile: string | undefined;
+/** Resolve the active profile name by matching the current session's provider
+ *  against profiles.json. Falls back to settings.json._activeProfile. */
+function resolveActiveProfile(currentProvider: string | undefined): string | undefined {
+	// Try to match current provider to a profile
+	if (currentProvider) {
+		const profilesPath = path.join(path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", ".."), "profiles.json");
+		try {
+			const raw = fs.readFileSync(profilesPath, "utf-8");
+			const profiles = JSON.parse(raw) as Record<string, { provider?: string }>;
+			for (const [name, profile] of Object.entries(profiles)) {
+				if (profile.provider === currentProvider) return name;
+			}
+		} catch { /* profiles.json missing or malformed — fall through */ }
+	}
 
-function readActiveProfile(): string | undefined {
-	if (cachedActiveProfile) return cachedActiveProfile;
+	// Fallback: read persisted profile from settings.json
 	const settingsPath = path.join(getAgentDir(), "settings.json");
 	try {
 		const raw = fs.readFileSync(settingsPath, "utf-8");
 		const settings = JSON.parse(raw);
-		cachedActiveProfile = settings._activeProfile ?? undefined;
-		return cachedActiveProfile;
+		return settings._activeProfile ?? undefined;
 	} catch {
 		return undefined;
 	}
@@ -260,6 +270,7 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
+	activeProfile: string | undefined,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -281,7 +292,6 @@ async function runSingleAgent(
 
 	// Propagate the active work profile so child processes use the same
 	// provider/tier as the parent session.
-	const activeProfile = readActiveProfile();
 	if (activeProfile) args.push("--profile", activeProfile);
 
 	if (agent.model) args.push("--model", agent.model);
@@ -450,13 +460,6 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	// Listen for profile changes from the work-profile extension so child
-	// pi processes inherit the correct provider/tier.
-	pi.events.on("profile:changed", (data) => {
-		const { profile } = data as { profile: string };
-		cachedActiveProfile = profile;
-	});
-
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
@@ -469,6 +472,12 @@ export default function (pi: ExtensionAPI) {
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+			// Resolve profile from the current session's provider so child
+			// pi processes use the same provider/tier, regardless of what
+			// other concurrent sessions have persisted to settings.json.
+			const currentProvider = ctx.model?.provider;
+			const activeProfile = resolveActiveProfile(currentProvider);
+
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
@@ -559,6 +568,7 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
+						activeProfile,
 					);
 					results.push(result);
 
@@ -639,6 +649,7 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
+						activeProfile,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -673,6 +684,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
+					activeProfile,
 				);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {

@@ -525,7 +525,6 @@ export default function workProfile(pi: ExtensionAPI) {
 
 		activeProfileName = name;
 		activeTier = defaultTier;
-		pi.events.emit("profile:changed", { profile: name });
 		updateStatus(ctx);
 		return true;
 	}
@@ -707,7 +706,6 @@ export default function workProfile(pi: ExtensionAPI) {
 		const saved = settings._activeProfile as string | undefined;
 		if (saved && profiles[saved]) {
 			activeProfileName = saved;
-			pi.events.emit("profile:changed", { profile: saved });
 			// Don't re-apply model on restore — just track the name
 		}
 
