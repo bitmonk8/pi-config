@@ -19,7 +19,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { type ExtensionAPI, getAgentDir, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
@@ -27,32 +27,6 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 const MAX_PARALLEL_TASKS = 16;
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
-
-/** Resolve the active profile name by matching the current session's provider
- *  against profiles.json. Falls back to settings.json._activeProfile. */
-function resolveActiveProfile(currentProvider: string | undefined): string | undefined {
-	// Try to match current provider to a profile
-	if (currentProvider) {
-		const profilesPath = path.join(path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", ".."), "profiles.json");
-		try {
-			const raw = fs.readFileSync(profilesPath, "utf-8");
-			const profiles = JSON.parse(raw) as Record<string, { provider?: string }>;
-			for (const [name, profile] of Object.entries(profiles)) {
-				if (profile.provider === currentProvider) return name;
-			}
-		} catch { /* profiles.json missing or malformed — fall through */ }
-	}
-
-	// Fallback: read persisted profile from settings.json
-	const settingsPath = path.join(getAgentDir(), "settings.json");
-	try {
-		const raw = fs.readFileSync(settingsPath, "utf-8");
-		const settings = JSON.parse(raw);
-		return settings._activeProfile ?? undefined;
-	} catch {
-		return undefined;
-	}
-}
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -270,7 +244,6 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
-	activeProfile: string | undefined,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -289,11 +262,6 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-
-	// Propagate the active work profile so child processes use the same
-	// provider/tier as the parent session.
-	if (activeProfile) args.push("--profile", activeProfile);
-
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 
@@ -472,12 +440,6 @@ export default function (pi: ExtensionAPI) {
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			// Resolve profile from the current session's provider so child
-			// pi processes use the same provider/tier, regardless of what
-			// other concurrent sessions have persisted to settings.json.
-			const currentProvider = ctx.model?.provider;
-			const activeProfile = resolveActiveProfile(currentProvider);
-
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
@@ -568,7 +530,6 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
-						activeProfile,
 					);
 					results.push(result);
 
@@ -649,7 +610,6 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
-						activeProfile,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -684,7 +644,6 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
-					activeProfile,
 				);
 				const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 				if (isError) {

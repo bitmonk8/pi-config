@@ -29,22 +29,23 @@ This is an autonomous loop. Do NOT stop or wait for user input between steps.
 ## Loop
 
 ### Step 1: Review
-Run the appropriate git diff command(s) to get the diff. Use the subagent tool to
-run all 9 review lens agents **in parallel** with the full diff:
-review-lens-correctness, review-lens-simplification, review-lens-testing,
-review-lens-cruft, review-lens-separation, review-lens-naming, review-lens-placement,
-review-lens-doc-mismatch, review-lens-error-handling
+Run the appropriate git diff command(s) to get the diff. Combine tracked diffs and untracked new files into the review payload. Use the subagent tool to run these 9 review lens agents in parallel with the diff:
+`review-lens-correctness`, `review-lens-cruft`, `review-lens-doc-mismatch`, `review-lens-error-handling`, `review-lens-naming`, `review-lens-placement`, `review-lens-separation`, `review-lens-simplification`, `review-lens-testing`
+
+**Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery automatically. Just call it.
+
+**Failed agents:** If any agent fails or returns empty output, **re-run that specific agent once**. If it fails again, note it as "agent unavailable" and continue with the results you have. Do NOT skip the lens — always attempt the re-run.
 
 Consolidate findings grouped by file, tagged by category.
 
 ### Step 2: Triage
-Use the subagent tool to run the triage-assessor agent with all findings.
+Use the subagent tool to run the `triage-assessor` agent with all findings.
 Print the triage results, then IMMEDIATELY continue to Step 3.
 
 ### Step 3: Apply Policy & Fix
 For each assessed finding, apply the policy to classify as **fix**, **document**, or **ignore**.
 
-- **Fix:** use subagent to run the fixer agent sequentially (one at a time) with the
+- **Fix:** use the subagent tool to run `fixer` sequentially (one at a time) with the
   issue description and file path.
 - **Document:** Read `docs/ISSUES_CONFIG.md` for the issue tracking backend
   (default: `file` backend, path `docs/ISSUES.md`).
@@ -55,8 +56,9 @@ For each assessed finding, apply the policy to classify as **fix**, **document**
 - **Ignore:** skip.
 
 ### Step 4: Re-review or terminate
-- If fixes were applied in Step 3, go back to Step 1 (using the same diff target).
-- If no findings were classified as "fix," the loop is done.
+- If fixes were applied in Step 3, go back to Step 1 (using the same diff target, but now including uncommitted fix changes).
+- If **zero** findings were classified as "fix" in this iteration, the loop is done.
+- You MUST re-review after every round of fixes — fixes can introduce new issues or make doc counts stale.
 
 ## Summary (only after loop terminates)
 Print what was fixed, documented, and ignored. Do NOT create report files.

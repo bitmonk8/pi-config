@@ -26,6 +26,8 @@ If no argument was given, ask for a spec reference. Examples:
 
    **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery from packages, bundled dirs, and user dirs automatically. Just call it.
 
+   **Failed agents:** If any agent fails or returns empty output, **re-run that specific agent once**. If it fails again, note it as "agent unavailable" and continue with the results you have. Do NOT skip the lens — always attempt the re-run.
+
    **B. Triage** — Use the subagent tool to run the `triage-assessor` agent with all findings.
 
    **C. Apply Policy & Fix** — Classify each finding per the policy above.
@@ -33,6 +35,6 @@ If no argument was given, ask for a spec reference. Examples:
    - Document: append to issue tracker (check `docs/ISSUES_CONFIG.md`, default `file` backend at `docs/ISSUES.md`).
    - Ignore: skip.
 
-   **D. Re-review or terminate** — If any fixes were applied, go back to A. Otherwise done.
+   **D. Re-review or terminate** — If any fixes were applied, go back to A. If **zero** findings were classified as "fix" in this iteration, the loop is done. You MUST re-review after every round of fixes — fixes can introduce new issues or make doc counts stale.
 
 3. **Summary** — Print what was implemented, fixed, documented, and ignored. Do NOT create report files.
