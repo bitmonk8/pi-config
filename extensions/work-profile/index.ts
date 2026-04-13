@@ -3,21 +3,27 @@
  *
  * Switches between work profiles (unity, unity-pilot, personal) by writing
  * a virtual "active" provider into models.json with tier aliases: fast,
- * balanced, smart.  Subagent .md files use `model: fast`, `model: balanced`,
- * or `model: smart` and the subprocess resolves them against the "active"
- * provider at launch time — no runtime provider injection needed.
+ * balanced, smart.  Subagent .md files use `model: active/fast` etc. and
+ * the subprocess resolves them via models.json at launch time.
  *
- * Config: profiles.json (sibling to this file, or ~/.pi/agent/profiles.json)
+ * Also provides /refresh-models to rediscover available models from the
+ * Unity LiteLLM proxy (replaces configure_pi_models.nu).
+ *
+ * Config: profiles.json (package root or ~/.pi/agent/profiles.json)
  *
  * Usage:
  *   /profile              — show selector
  *   /profile unity-pilot  — switch directly
  *   Ctrl+Shift+P          — cycle profiles
  *   --profile <name>      — CLI flag
+ *   /tier                 — show tier selector
+ *   /tier fast            — switch directly
+ *   Ctrl+Shift+T          — cycle tiers
+ *   /refresh-models       — rediscover models from Unity LiteLLM proxy
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
@@ -182,6 +188,189 @@ function writeSettings(profile: Profile, profileName: string): void {
 	settings._activeProfile = profileName;
 
 	writeFileSync(getSettingsJsonPath(), JSON.stringify(settings, null, 2), "utf-8");
+}
+
+// ── Model refresh (replaces configure_pi_models.nu) ──────────────────────
+
+const UNITY_BASE_URL = "https://uai-litellm.internal.unity.com";
+
+interface LiteLLMModelInfo {
+	model_name: string;
+	model_info: {
+		mode?: string;
+		supports_vision?: boolean;
+		supports_reasoning?: boolean;
+		max_input_tokens?: number;
+		max_output_tokens?: number;
+		input_cost_per_token?: number;
+		output_cost_per_token?: number;
+		cache_read_input_token_cost?: number;
+		cache_creation_input_token_cost?: number;
+	};
+}
+
+interface ModelEntry {
+	id: string;
+	name: string;
+	reasoning: boolean;
+	input: string[];
+	contextWindow: number;
+	maxTokens: number;
+	cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+}
+
+async function fetchModelIds(key: string): Promise<string[]> {
+	const resp = await fetch(`${UNITY_BASE_URL}/v1/models`, {
+		headers: { Authorization: `Bearer ${key}` },
+	});
+	if (!resp.ok) throw new Error(`/v1/models: ${resp.status} ${resp.statusText}`);
+	const data = await resp.json() as { data: { id: string }[] };
+	return data.data.map((m) => m.id);
+}
+
+async function fetchModelInfo(key: string): Promise<Map<string, LiteLLMModelInfo>> {
+	const resp = await fetch(`${UNITY_BASE_URL}/model/info`, {
+		headers: { Authorization: `Bearer ${key}` },
+	});
+	if (!resp.ok) throw new Error(`/model/info: ${resp.status} ${resp.statusText}`);
+	const data = await resp.json() as { data: LiteLLMModelInfo[] };
+	const map = new Map<string, LiteLLMModelInfo>();
+	for (const entry of data.data) {
+		if (!map.has(entry.model_name)) map.set(entry.model_name, entry);
+	}
+	return map;
+}
+
+function toLookupName(id: string): string {
+	if (id.startsWith("anthropic.")) {
+		return id
+			.replace(/^anthropic\./, "")
+			.replace("-engine-eng", "")
+			.replace(/-v\d+(?::\d+)?$/, "");
+	}
+	return id;
+}
+
+function isDuplicate(id: string): boolean {
+	return id.endsWith("-ent-ai") || id.endsWith("-qa");
+}
+
+function hasCleanTwin(id: string, allIds: Set<string>): boolean {
+	if (!id.endsWith("-engine-eng")) return false;
+	return allIds.has(id.replace("-engine-eng", ""));
+}
+
+function buildModels(
+	allIds: string[],
+	modelInfo: Map<string, LiteLLMModelInfo>,
+	mode: string,
+): ModelEntry[] {
+	const idSet = new Set(allIds);
+	return allIds
+		.filter((id) => !isDuplicate(id))
+		.filter((id) => !hasCleanTwin(id, idSet))
+		.flatMap((id) => {
+			const info = modelInfo.get(toLookupName(id));
+			if (!info || info.model_info.mode !== mode) return [];
+			const mi = info.model_info;
+			return [{
+				id,
+				name: toLookupName(id),
+				reasoning: mi.supports_reasoning ?? false,
+				input: (mi.supports_vision ?? false) ? ["text", "image"] : ["text"],
+				contextWindow: mi.max_input_tokens ?? 128_000,
+				maxTokens: mi.max_output_tokens ?? 16_384,
+				cost: {
+					input: (mi.input_cost_per_token ?? 0) * 1_000_000,
+					output: (mi.output_cost_per_token ?? 0) * 1_000_000,
+					cacheRead: (mi.cache_read_input_token_cost ?? 0) * 1_000_000,
+					cacheWrite: (mi.cache_creation_input_token_cost ?? 0) * 1_000_000,
+				},
+			}];
+		});
+}
+
+function selectDefaultOpus(models: ModelEntry[]): ModelEntry | undefined {
+	const candidates = models.filter(
+		(m) => m.name.includes("opus") && m.contextWindow >= 1_000_000,
+	);
+	if (candidates.length === 0) return undefined;
+	return candidates.sort((a, b) => {
+		const score = (name: string) => {
+			const m = name.match(/opus-(\d+)-(\d+)/);
+			return m ? parseInt(m[1]) * 100 + parseInt(m[2]) : 0;
+		};
+		return score(b.name) - score(a.name);
+	})[0];
+}
+
+interface RefreshResult {
+	unityCount: number;
+	unityResponsesCount: number;
+	pilotCount: number;
+	defaultModel: string | undefined;
+}
+
+async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
+	const key1 = process.env["UNITY_LITELLM_KEY1"];
+	const key2 = process.env["UNITY_LITELLM_KEY2"];
+	if (!key1) throw new Error("UNITY_LITELLM_KEY1 environment variable is not set");
+	if (!key2) throw new Error("UNITY_LITELLM_KEY2 environment variable is not set");
+
+	const [modelInfo, key1Ids, key2Ids] = await Promise.all([
+		fetchModelInfo(key1),
+		fetchModelIds(key1),
+		fetchModelIds(key2),
+	]);
+	if (signal?.aborted) throw new Error("aborted");
+
+	const unityModels = buildModels(key1Ids, modelInfo, "chat");
+	const unityResponsesModels = buildModels(key1Ids, modelInfo, "responses");
+	const pilotModels = buildModels(key2Ids, modelInfo, "chat");
+
+	// Preserve the existing "active" provider so the current profile
+	// survives the refresh.
+	const existing = readModelsJson();
+	const activeProvider = existing.providers[ACTIVE_PROVIDER];
+
+	const providers: Record<string, any> = {
+		unity: {
+			baseUrl: `${UNITY_BASE_URL}/v1`,
+			api: "openai-completions",
+			apiKey: "UNITY_LITELLM_KEY1",
+			models: unityModels,
+		},
+		"unity-responses": {
+			baseUrl: `${UNITY_BASE_URL}/v1`,
+			api: "openai-responses",
+			apiKey: "UNITY_LITELLM_KEY1",
+			models: unityResponsesModels,
+		},
+		"unity-pilot": {
+			baseUrl: `${UNITY_BASE_URL}/v1`,
+			api: "openai-completions",
+			apiKey: "UNITY_LITELLM_KEY2",
+			models: pilotModels,
+		},
+	};
+	if (activeProvider) providers[ACTIVE_PROVIDER] = activeProvider;
+
+	writeFileSync(getModelsJsonPath(), JSON.stringify({ providers }, null, 2), "utf-8");
+
+	const defaultModel = selectDefaultOpus(unityModels);
+	if (defaultModel) {
+		const settings = readSettings();
+		settings.defaultProvider = "unity";
+		settings.defaultModel = defaultModel.id;
+		writeFileSync(getSettingsJsonPath(), JSON.stringify(settings, null, 2), "utf-8");
+	}
+
+	return {
+		unityCount: unityModels.length,
+		unityResponsesCount: unityResponsesModels.length,
+		pilotCount: pilotModels.length,
+		defaultModel: defaultModel?.name,
+	};
 }
 
 // ── Extension ───────────────────────────────────────────────────────────
@@ -411,5 +600,31 @@ export default function workProfile(pi: ExtensionAPI) {
 		}
 
 		updateStatus(ctx);
+	});
+
+	// ── Model refresh command ────────────────────────────────────────
+
+	pi.registerCommand("refresh-models", {
+		description: "Rediscover available models from Unity LiteLLM proxy",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify("Fetching models from Unity LiteLLM...", "info");
+			try {
+				const result = await doRefreshModels(ctx.signal);
+				const msg = [
+					`unity: ${result.unityCount} chat`,
+					`unity-responses: ${result.unityResponsesCount}`,
+					`unity-pilot: ${result.pilotCount} chat`,
+					result.defaultModel ? `default: ${result.defaultModel}` : "",
+				].filter(Boolean).join("  |  ");
+				ctx.ui.notify(msg, "success");
+				// Re-apply the active profile so the updated provider
+				// baseUrl is picked up.
+				if (activeProfileName && profiles[activeProfileName]) {
+					writeActiveProvider(profiles[activeProfileName]);
+				}
+			} catch (err: any) {
+				ctx.ui.notify(`refresh-models failed: ${err?.message ?? err}`, "error");
+			}
+		},
 	});
 }
