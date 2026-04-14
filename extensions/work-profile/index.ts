@@ -90,11 +90,11 @@ function getPackageRoot(): string {
 	return extensionDir;
 }
 
-/** Load profiles.json from the package root, or from ~/.pi/agent/ */
+/** Load profiles.json — personal override (~/.pi/agent/) takes precedence over package default */
 function loadProfiles(): ProfilesConfig {
 	const locations = [
-		join(getPackageRoot(), "profiles.json"),
 		join(getAgentDir(), "profiles.json"),
+		join(getPackageRoot(), "profiles.json"),
 	];
 	for (const loc of locations) {
 		if (existsSync(loc)) {
