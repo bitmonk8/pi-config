@@ -468,6 +468,11 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 
 	// Preserve api/apiKey from models.json so manual edits survive a refresh.
 	const ep = existing.providers;
+	// baseUrl convention: the Anthropic SDK appends `/v1/messages` to
+	// baseUrl, while the OpenAI SDK expects baseUrl to already include
+	// `/v1` (it appends `/chat/completions` or `/responses`). So the
+	// "anthropic-messages" providers point at the bare host and the
+	// OpenAI-shape providers include `/v1`.
 	const providers: Record<string, any> = {
 		unity: {
 			baseUrl: `${UNITY_BASE_URL}/v1`,
@@ -476,7 +481,7 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 			models: unityModels,
 		},
 		"unity-messages": {
-			baseUrl: `${UNITY_BASE_URL}/v1`,
+			baseUrl: UNITY_BASE_URL,
 			api:    ep["unity-messages"]?.api    ?? "anthropic-messages",
 			apiKey: ep["unity-messages"]?.apiKey ?? "UNITY_LITELLM_KEY1",
 			models: unityMessagesModels,
@@ -488,7 +493,7 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 			models: unityResponsesModels,
 		},
 		"unity-pilot": {
-			baseUrl: `${UNITY_BASE_URL}/v1`,
+			baseUrl: UNITY_BASE_URL,
 			api:    ep["unity-pilot"]?.api    ?? "anthropic-messages",
 			apiKey: ep["unity-pilot"]?.apiKey ?? "UNITY_LITELLM_KEY2",
 			models: pilotModels,
