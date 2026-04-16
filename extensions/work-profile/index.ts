@@ -33,7 +33,7 @@ import { Key } from "@mariozechner/pi-tui";
 
 interface TierModel {
 	id: string;
-	name: string;
+	name?: string;
 	reasoning?: boolean;
 	input?: string[];
 	contextWindow?: number;
@@ -43,12 +43,8 @@ interface TierModel {
 
 interface Profile {
 	description?: string;
-	/** Source provider name in models.json to read baseUrl from */
+	/** Source provider name in models.json — also the authoritative source of baseUrl, api, and apiKey */
 	provider: string;
-	/** API type for the active provider */
-	api: string;
-	/** API key env var name or literal */
-	apiKey: string;
 	/** Tier → model mapping */
 	tiers: {
 		fast: TierModel;
@@ -99,7 +95,18 @@ function loadProfiles(): ProfilesConfig {
 	for (const loc of locations) {
 		if (existsSync(loc)) {
 			try {
-				return JSON.parse(readFileSync(loc, "utf-8"));
+				const loaded = JSON.parse(readFileSync(loc, "utf-8")) as ProfilesConfig;
+				for (const [profileName, profile] of Object.entries(loaded)) {
+					const raw = profile as Record<string, unknown>;
+					if ("api" in raw || "apiKey" in raw) {
+						console.warn(
+							`[work-profile] profiles.json entry "${profileName}" contains deprecated ` +
+							`fields "api" and/or "apiKey". These are now read from models.json. ` +
+							`Please remove them from profiles.json.`,
+						);
+					}
+				}
+				return loaded;
 			} catch (err) {
 				console.error(`Failed to parse ${loc}: ${err}`);
 			}
@@ -145,28 +152,40 @@ function writeActiveProvider(profile: Profile): void {
 	const modelsJson = readModelsJson();
 	const sourceProvider = modelsJson.providers[profile.provider];
 
+	// All transport config comes from models.json — profiles.json is not authoritative.
 	const baseUrl: string = sourceProvider?.baseUrl ?? `https://missing-baseUrl-for-${profile.provider}`;
+	const api:     string = sourceProvider?.api     ?? "openai-completions";
+	const apiKey:  string = sourceProvider?.apiKey  ?? "";
+
+	// Look up each tier's full model metadata from the source provider so
+	// capabilities (context window, cost, etc.) stay in sync with models.json.
+	const sourceModels: ModelEntry[] = Array.isArray(sourceProvider?.models)
+		? (sourceProvider.models as ModelEntry[])
+		: [];
 
 	// Build tier model entries. Agent .md files reference these as
 	// "active/fast", "active/balanced", "active/smart" — the provider
 	// qualifier avoids name collisions with built-in models.
 	const models = TIER_NAMES.map((tier) => {
-		const src = profile.tiers[tier];
-		return {
-			id: src.id,
-			name: tier,
-			reasoning: src.reasoning ?? false,
-			input: src.input ?? ["text"],
-			contextWindow: src.contextWindow ?? 200_000,
-			maxTokens: src.maxTokens ?? 16384,
-			cost: src.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		};
+		const tierDef = profile.tiers[tier];
+		const sourceModel = sourceModels.find((m) => m.id === tierDef.id);
+		return sourceModel
+			? { ...sourceModel, name: tier }
+			: {
+				id: tierDef.id,
+				name: tier,
+				reasoning: false,
+				input: ["text"] as string[],
+				contextWindow: 200_000,
+				maxTokens: 16_384,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			};
 	});
 
 	modelsJson.providers[ACTIVE_PROVIDER] = {
 		baseUrl,
-		api: profile.api,
-		apiKey: profile.apiKey,
+		api,
+		apiKey,
 		models,
 	};
 
@@ -260,6 +279,11 @@ function hasCleanTwin(id: string, allIds: Set<string>): boolean {
 	return allIds.has(id.replace("-engine-eng", ""));
 }
 
+function isClaudeModel(name: string): boolean {
+	const lower = name.toLowerCase();
+	return lower.includes("claude") || lower.includes("anthropic");
+}
+
 function buildModels(
 	allIds: string[],
 	modelInfo: Map<string, LiteLLMModelInfo>,
@@ -298,6 +322,20 @@ function selectDefaultOpus(models: ModelEntry[]): ModelEntry | undefined {
 	return candidates.sort((a, b) => {
 		const score = (name: string) => {
 			const m = name.match(/opus-(\d+)-(\d+)/);
+			return m ? parseInt(m[1]) * 100 + parseInt(m[2]) : 0;
+		};
+		return score(b.name) - score(a.name);
+	})[0];
+}
+
+function selectDefaultSonnet(models: ModelEntry[]): ModelEntry | undefined {
+	const candidates = models.filter(
+		(m) => m.name.toLowerCase().includes("sonnet") && m.contextWindow >= 200_000,
+	);
+	if (candidates.length === 0) return undefined;
+	return candidates.sort((a, b) => {
+		const score = (name: string) => {
+			const m = name.match(/sonnet-(\d+)-(\d+)/);
 			return m ? parseInt(m[1]) * 100 + parseInt(m[2]) : 0;
 		};
 		return score(b.name) - score(a.name);
@@ -384,6 +422,7 @@ function buildOpenRouterModels(raws: OpenRouterModel[]): ModelEntry[] {
 
 interface RefreshResult {
 	unityCount: number;
+	unityMessagesCount: number;
 	unityResponsesCount: number;
 	pilotCount: number;
 	openrouterCount: number;
@@ -415,7 +454,9 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 	const [[modelInfo, key1Ids, key2Ids], orRaw] = await Promise.all([liteLLMFetch, orFetch]);
 	if (signal?.aborted) throw new Error("aborted");
 
-	const unityModels = buildModels(key1Ids, modelInfo, "chat");
+	const allKey1ChatModels = buildModels(key1Ids, modelInfo, "chat");
+	const unityModels = allKey1ChatModels.filter((m) => !isClaudeModel(m.name));
+	const unityMessagesModels = allKey1ChatModels.filter((m) => isClaudeModel(m.name));
 	const unityResponsesModels = buildModels(key1Ids, modelInfo, "responses");
 	const pilotModels = buildModels(key2Ids, modelInfo, "chat");
 	const orModels = buildOpenRouterModels(orRaw);
@@ -425,23 +466,31 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 	const existing = readModelsJson();
 	const activeProvider = existing.providers[ACTIVE_PROVIDER];
 
+	// Preserve api/apiKey from models.json so manual edits survive a refresh.
+	const ep = existing.providers;
 	const providers: Record<string, any> = {
 		unity: {
 			baseUrl: `${UNITY_BASE_URL}/v1`,
-			api: "openai-completions",
-			apiKey: "UNITY_LITELLM_KEY1",
+			api:    ep["unity"]?.api    ?? "openai-completions",
+			apiKey: ep["unity"]?.apiKey ?? "UNITY_LITELLM_KEY1",
 			models: unityModels,
+		},
+		"unity-messages": {
+			baseUrl: `${UNITY_BASE_URL}/v1`,
+			api:    ep["unity-messages"]?.api    ?? "anthropic-messages",
+			apiKey: ep["unity-messages"]?.apiKey ?? "UNITY_LITELLM_KEY1",
+			models: unityMessagesModels,
 		},
 		"unity-responses": {
 			baseUrl: `${UNITY_BASE_URL}/v1`,
-			api: "openai-responses",
-			apiKey: "UNITY_LITELLM_KEY1",
+			api:    ep["unity-responses"]?.api    ?? "openai-responses",
+			apiKey: ep["unity-responses"]?.apiKey ?? "UNITY_LITELLM_KEY1",
 			models: unityResponsesModels,
 		},
 		"unity-pilot": {
 			baseUrl: `${UNITY_BASE_URL}/v1`,
-			api: "openai-completions",
-			apiKey: "UNITY_LITELLM_KEY2",
+			api:    ep["unity-pilot"]?.api    ?? "anthropic-messages",
+			apiKey: ep["unity-pilot"]?.apiKey ?? "UNITY_LITELLM_KEY2",
 			models: pilotModels,
 		},
 	};
@@ -463,16 +512,17 @@ async function doRefreshModels(signal?: AbortSignal): Promise<RefreshResult> {
 
 	writeFileSync(getModelsJsonPath(), JSON.stringify({ providers }, null, 2), "utf-8");
 
-	const defaultModel = selectDefaultOpus(unityModels);
+	const defaultModel = selectDefaultSonnet(unityMessagesModels);
 	if (defaultModel) {
 		const settings = readSettings();
-		settings.defaultProvider = "unity";
+		settings.defaultProvider = "unity-messages";
 		settings.defaultModel = defaultModel.id;
 		writeFileSync(getSettingsJsonPath(), JSON.stringify(settings, null, 2), "utf-8");
 	}
 
 	return {
 		unityCount: unityModels.length,
+		unityMessagesCount: unityMessagesModels.length,
 		unityResponsesCount: unityResponsesModels.length,
 		pilotCount: pilotModels.length,
 		openrouterCount: orModels.length,
@@ -642,7 +692,8 @@ export default function workProfile(pi: ExtensionAPI) {
 			const displayNames = TIER_NAMES.map((tier) => {
 				const m = profile.tiers[tier];
 				const isActive = tier === activeTier;
-				return isActive ? `${tier} (active) — ${m.name}` : `${tier} — ${m.name}`;
+				const label = m.name ?? m.id;
+				return isActive ? `${tier} (active) — ${label}` : `${tier} — ${label}`;
 			});
 
 			const choice = await ctx.ui.select("Select model tier:", displayNames);
@@ -724,6 +775,7 @@ export default function workProfile(pi: ExtensionAPI) {
 				ctx.modelRegistry.refresh();
 				const msg = [
 					`unity: ${result.unityCount} chat`,
+					`unity-messages: ${result.unityMessagesCount} chat`,
 					`unity-responses: ${result.unityResponsesCount}`,
 					`unity-pilot: ${result.pilotCount} chat`,
 					result.openrouterCount > 0 ? `openrouter: ${result.openrouterCount}` : "",

@@ -2,8 +2,6 @@
   "unity": {
     "description": "Unity LiteLLM proxy (all models, Key1)",
     "provider": "unity",
-    "api": "openai-completions",
-    "apiKey": "UNITY_LITELLM_KEY1",
     "tiers": {
       "fast":     { "id": "claude-haiku-4-5",  "name": "claude-haiku-4-5" },
       "balanced": { "id": "claude-sonnet-4-6",  "name": "claude-sonnet-4-6" },
@@ -14,8 +12,6 @@
   "personal": {
     "description": "Personal OpenRouter account",
     "provider": "openrouter",
-    "api": "openai-completions",
-    "apiKey": "PERSONAL_OPENROUTER_KEY",
     "tiers": {
       "fast":     { "id": "x-ai/grok-4.1-fast",    "name": "Grok 4.1 Fast" },
       "balanced": { "id": "moonshotai/kimi-k2.5",   "name": "Kimi K2.5" },
@@ -26,12 +22,10 @@
   "unity-pilot": {
     "description": "Unity Pilot proxy (Anthropic models, Key2)",
     "provider": "unity-pilot",
-    "api": "openai-completions",
-    "apiKey": "UNITY_LITELLM_KEY2",
     "tiers": {
-      "fast":     { "id": "claude-haiku-4-5",                       "name": "claude-haiku-4-5" },
-      "balanced": { "id": "anthropic.claude-sonnet-4-6-engine-eng",  "name": "claude-sonnet-4-6" },
-      "smart":    { "id": "claude-opus-4-6",                        "name": "claude-opus-4-6" }
+      "fast":     { "id": "claude-haiku-4-5",      "name": "claude-haiku-4-5" },
+      "balanced": { "id": "claude-sonnet-4-6",      "name": "claude-sonnet-4-6" },
+      "smart":    { "id": "claude-opus-4-6",        "name": "claude-opus-4-6" }
     },
     "default": "smart"
   }
