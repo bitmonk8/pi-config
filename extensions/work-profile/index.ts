@@ -456,6 +456,14 @@ function parseClaudeVersion(model: ModelEntry): ClaudeVersion | null {
 }
 
 /**
+ * Models to exclude from auto-tier selection (e.g. require unsupported API features).
+ * Remove entries as pi/LiteLLM adds support.
+ */
+const CLAUDE_BLOCKLIST = new Set([
+	"claude-opus-4-7", // requires thinking.type: "adaptive" (not yet supported by pi)
+]);
+
+/**
  * Higher = newer. Tiebreakers (same version):
  *   1. Prefer undated alias over dated variant
  *   2. Prefer clean ID (id === name) over raw prefixed IDs like
@@ -474,7 +482,8 @@ function selectBestClaude(
 	const candidates = models
 		.map(parseClaudeVersion)
 		.filter((v): v is ClaudeVersion =>
-			v !== null && v.family === family && v.model.contextWindow >= minContext,
+			v !== null && v.family === family && v.model.contextWindow >= minContext
+			&& !CLAUDE_BLOCKLIST.has(v.model.name),
 		)
 		.sort((a, b) => claudeVersionScore(b) - claudeVersionScore(a));
 	return candidates[0]?.model;

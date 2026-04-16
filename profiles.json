@@ -12,8 +12,8 @@
         "name": "claude-sonnet-4-6"
       },
       "smart": {
-        "id": "claude-opus-4-7",
-        "name": "claude-opus-4-7"
+        "id": "claude-opus-4-6",
+        "name": "claude-opus-4-6"
       }
     },
     "default": "smart"
