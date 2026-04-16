@@ -418,6 +418,204 @@ function buildOpenRouterModels(raws: OpenRouterModel[]): ModelEntry[] {
 		});
 }
 
+// ── Auto-tier selection ──────────────────────────────────────────────────
+
+interface ClaudeVersion {
+	family: "haiku" | "sonnet" | "opus";
+	major: number;
+	minor: number;
+	dated: boolean;
+	model: ModelEntry;
+}
+
+function parseClaudeVersion(model: ModelEntry): ClaudeVersion | null {
+	const name = model.name;
+	// Pattern 1: claude-{family}-{major}-{minor}(-{date})?
+	const m1 = name.match(/^claude-(haiku|sonnet|opus)-(\d+)-(\d{1,2})(?:-\d{8})?$/);
+	if (m1) {
+		return {
+			family: m1[1] as ClaudeVersion["family"],
+			major: parseInt(m1[2]),
+			minor: parseInt(m1[3]),
+			dated: /-\d{8}$/.test(name),
+			model,
+		};
+	}
+	// Pattern 2: claude-{major}-{minor}-{family}(-{date})?  (older naming)
+	const m2 = name.match(/^claude-([\d]+)-([\d]+)-(haiku|sonnet|opus)(?:-\d{8})?$/);
+	if (m2) {
+		return {
+			family: m2[3] as ClaudeVersion["family"],
+			major: parseInt(m2[1]),
+			minor: parseInt(m2[2]),
+			dated: /-\d{8}$/.test(name),
+			model,
+		};
+	}
+	return null;
+}
+
+/** Higher = newer. Prefer undated alias over dated variant at same version. */
+function claudeVersionScore(v: ClaudeVersion): number {
+	return v.major * 1000 + v.minor * 10 + (v.dated ? 0 : 1);
+}
+
+function selectBestClaude(
+	models: ModelEntry[],
+	family: "haiku" | "sonnet" | "opus",
+	minContext: number,
+): ModelEntry | undefined {
+	const candidates = models
+		.map(parseClaudeVersion)
+		.filter((v): v is ClaudeVersion =>
+			v !== null && v.family === family && v.model.contextWindow >= minContext,
+		)
+		.sort((a, b) => claudeVersionScore(b) - claudeVersionScore(a));
+	return candidates[0]?.model;
+}
+
+interface GptVersion {
+	major: number;
+	minor: number;
+	suffix: string | undefined;
+	model: ModelEntry;
+}
+
+function parseGptVersion(model: ModelEntry): GptVersion | null {
+	// Match openai/gpt-{major}(.{minor})?(-suffix)?
+	// Only consider major >= 5 (new generation)
+	const m = model.id.match(/^openai\/gpt-([\d]+)(?:\.([\d]+))?(?:-([\w][\w-]*))?$/);
+	if (!m) return null;
+	const major = parseInt(m[1]);
+	if (major < 5) return null;
+	// Exclude non-text models
+	const suffix = m[3];
+	if (suffix && /^(image|audio|oss)/.test(suffix)) return null;
+	return {
+		major,
+		minor: m[2] ? parseInt(m[2]) : 0,
+		suffix: suffix || undefined,
+		model,
+	};
+}
+
+function gptVersionScore(v: GptVersion): number {
+	return v.major * 1000 + v.minor * 10;
+}
+
+/**
+ * Select the best GPT model from OpenRouter by suffix.
+ * - undefined → base model (no suffix, i.e. most powerful standard variant)
+ * - "codex"  → latest GPT-Codex
+ * - "nano"   → latest GPT-Nano
+ */
+function selectBestGpt(
+	models: ModelEntry[],
+	suffixMatch: string | undefined,
+): ModelEntry | undefined {
+	const parsed = models
+		.map(parseGptVersion)
+		.filter((v): v is GptVersion => {
+			if (v === null) return false;
+			if (suffixMatch === undefined) {
+				return v.suffix === undefined;
+			}
+			return v.suffix === suffixMatch;
+		})
+		.sort((a, b) => gptVersionScore(b) - gptVersionScore(a));
+	return parsed[0]?.model;
+}
+
+interface TierUpdate {
+	profile: string;
+	tier: string;
+	oldId: string;
+	newId: string;
+	newName: string;
+}
+
+/** Resolve the path of the profiles.json that loadProfiles() would read. */
+function getProfilesJsonPath(): string {
+	const locations = [
+		join(getAgentDir(), "profiles.json"),
+		join(getPackageRoot(), "profiles.json"),
+	];
+	for (const loc of locations) {
+		if (existsSync(loc)) return loc;
+	}
+	return join(getAgentDir(), "profiles.json");
+}
+
+/**
+ * Auto-select the best model for each tier in every profile, based on
+ * the freshly-discovered models in models.json.
+ *
+ * Claude profiles (anthropic-messages API):
+ *   fast     → latest haiku (any context)
+ *   balanced → latest sonnet with ≥1M context
+ *   smart    → latest opus   with ≥1M context
+ *
+ * OpenRouter personal profile:
+ *   smart    → latest GPT base model (no suffix)
+ *   balanced → latest GPT-Codex
+ *   fast     → latest GPT-Nano
+ */
+function autoUpdateProfileTiers(): TierUpdate[] {
+	const modelsJson = readModelsJson();
+	const profilesPath = getProfilesJsonPath();
+	if (!existsSync(profilesPath)) return [];
+
+	let profiles: ProfilesConfig;
+	try {
+		profiles = JSON.parse(readFileSync(profilesPath, "utf-8"));
+	} catch {
+		return [];
+	}
+
+	const changes: TierUpdate[] = [];
+
+	for (const [profileName, profile] of Object.entries(profiles)) {
+		const providerData = modelsJson.providers[profile.provider];
+		if (!providerData?.models) continue;
+		const models: ModelEntry[] = providerData.models;
+
+		const api = providerData.api as string;
+
+		if (api === "anthropic-messages") {
+			// Claude-based profile: haiku / sonnet / opus
+			const picks: [typeof TIER_NAMES[number], ModelEntry | undefined][] = [
+				["fast",     selectBestClaude(models, "haiku",  0)],
+				["balanced", selectBestClaude(models, "sonnet", 1_000_000)],
+				["smart",    selectBestClaude(models, "opus",   1_000_000)],
+			];
+			for (const [tier, pick] of picks) {
+				if (pick && pick.id !== profile.tiers[tier].id) {
+					changes.push({ profile: profileName, tier, oldId: profile.tiers[tier].id, newId: pick.id, newName: pick.name });
+					profile.tiers[tier] = { id: pick.id, name: pick.name };
+				}
+			}
+		} else if (profileName === "personal" || providerData.baseUrl?.includes("openrouter")) {
+			// OpenRouter GPT-based profile
+			const picks: [typeof TIER_NAMES[number], ModelEntry | undefined][] = [
+				["fast",     selectBestGpt(models, "nano")],
+				["balanced", selectBestGpt(models, "codex")],
+				["smart",    selectBestGpt(models, undefined)],
+			];
+			for (const [tier, pick] of picks) {
+				if (pick && pick.id !== profile.tiers[tier].id) {
+					changes.push({ profile: profileName, tier, oldId: profile.tiers[tier].id, newId: pick.id, newName: pick.name });
+					profile.tiers[tier] = { id: pick.id, name: pick.name };
+				}
+			}
+		}
+	}
+
+	if (changes.length > 0) {
+		writeFileSync(profilesPath, JSON.stringify(profiles, null, 2), "utf-8");
+	}
+	return changes;
+}
+
 // ── Refresh orchestration ───────────────────────────────────────────────
 
 interface RefreshResult {
@@ -778,6 +976,13 @@ export default function workProfile(pi: ExtensionAPI) {
 				const result = await doRefreshModels(ctx.signal);
 				// Reload in-memory registry so new providers are immediately usable
 				ctx.modelRegistry.refresh();
+
+				// Auto-update profile tiers based on discovered models
+				const tierChanges = autoUpdateProfileTiers();
+				if (tierChanges.length > 0) {
+					profiles = loadProfiles();
+				}
+
 				const msg = [
 					`unity: ${result.unityCount} chat`,
 					`unity-messages: ${result.unityMessagesCount} chat`,
@@ -788,8 +993,17 @@ export default function workProfile(pi: ExtensionAPI) {
 					result.defaultModel ? `default: ${result.defaultModel}` : "",
 				].filter(Boolean).join("  |  ");
 				ctx.ui.notify(msg, "success");
+
+				// Report tier changes
+				if (tierChanges.length > 0) {
+					const tierMsg = tierChanges
+						.map((c) => `${c.profile}/${c.tier}: ${c.oldId} → ${c.newId}`)
+						.join("\n");
+					ctx.ui.notify(`Tier updates:\n${tierMsg}`, "info");
+				}
+
 				// Re-apply the active profile so the updated provider
-				// baseUrl is picked up.
+				// baseUrl and tier models are picked up.
 				if (activeProfileName && profiles[activeProfileName]) {
 					writeActiveProvider(profiles[activeProfileName]);
 				}
