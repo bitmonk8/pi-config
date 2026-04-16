@@ -1,13 +1,15 @@
 ---
-description: Full project audit with narrow and broad lens reviews, triage, and interactive fixes
+description: Audit a target with narrow and broad lens reviews, triage, and interactive fixes
 ---
-Perform a full audit of the entire project in the current working directory.
+Perform a full audit of: **$ARGUMENTS**
 
 ## Phase 1: Discovery & Plan
 
-1. Run `git ls-files` to get all tracked files.
-2. Classify each as code or documentation.
-3. Write `docs/AUDIT.md` with the review plan: file list, agent counts, batching strategy.
+1. Identify the files to audit based on the target (`$ARGUMENTS`):
+   - For the entire project: run `git ls-files` to enumerate all tracked files.
+   - For a specific directory or file path: enumerate files within the given path.
+2. Classify each file as code or documentation.
+3. Write `docs/AUDIT.md` with the review plan: target, file list, agent counts, batching strategy.
 
 ## Phase 2: Narrow-lens reviews
 
@@ -26,7 +28,7 @@ Skip entries with no findings.
 
 ## Phase 3: Broad-lens reviews
 
-Use subagent to run all 6 broad lens agents in parallel with a project structure summary:
+Use subagent to run all 6 broad lens agents in parallel with a summary of the audit target:
 review-lens-correctness-broad, review-lens-simplification-broad, review-lens-separation-broad, review-lens-naming-broad, review-lens-placement-broad, review-lens-doc-mismatch-broad
 
 Only report cross-file issues.
