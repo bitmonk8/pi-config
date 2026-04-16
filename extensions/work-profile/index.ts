@@ -455,9 +455,15 @@ function parseClaudeVersion(model: ModelEntry): ClaudeVersion | null {
 	return null;
 }
 
-/** Higher = newer. Prefer undated alias over dated variant at same version. */
+/**
+ * Higher = newer. Tiebreakers (same version):
+ *   1. Prefer undated alias over dated variant
+ *   2. Prefer clean ID (id === name) over raw prefixed IDs like
+ *      "anthropic.claude-...-engine-eng"
+ */
 function claudeVersionScore(v: ClaudeVersion): number {
-	return v.major * 1000 + v.minor * 10 + (v.dated ? 0 : 1);
+	const cleanId = v.model.id === v.model.name ? 1 : 0;
+	return v.major * 10000 + v.minor * 100 + (v.dated ? 0 : 10) + cleanId;
 }
 
 function selectBestClaude(
