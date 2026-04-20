@@ -459,8 +459,8 @@ function parseClaudeVersion(model: ModelEntry): ClaudeVersion | null {
  * Models to exclude from auto-tier selection (e.g. require unsupported API features).
  * Remove entries as pi/LiteLLM adds support.
  */
-const CLAUDE_BLOCKLIST = new Set([
-	"claude-opus-4-7", // requires thinking.type: "adaptive" (not yet supported by pi)
+const CLAUDE_BLOCKLIST = new Set<string>([
+	// empty – pi now supports thinking.type: "adaptive"
 ]);
 
 /**
