@@ -13,6 +13,9 @@ pi install git:git@github.com:bitmonk8/pi-config
 ### Extensions
 
 - **subagent** — Delegate tasks to specialized subagents with isolated context windows. Supports single, parallel (up to 16, 8 concurrent), and chained execution.
+- **slack** — Hybrid Slack integration: read tools route through Slack's MCP server (Claude Code OAuth token), write tools call the Slack Web API directly with a bot token from `~/.pi/slack-config.json`.
+- **freepik** — Generate illustrative imagery from text prompts via the Freepik API. Supports Seedream 4.5 (default, best for diagrams/posters/typography), Flux Kontext Pro (general-purpose design with reference image input), and Mystic (photorealistic). Set `FREEPIK_API_KEY` in your environment.
+- **work-profile** — Switch between work and personal profiles.
 
 ### Agents
 
