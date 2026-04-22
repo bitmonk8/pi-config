@@ -5,20 +5,30 @@
  *
  *   freepik_generate_image
  *     Submits a text-to-image task, polls until completion, downloads the
- *     resulting PNG to a local path, and returns that path.
+ *     result to a local path, and returns that path.
  *
  *   freepik_get_image_task
  *     Look up a previously submitted task by ID — useful when a generation
  *     outlives a single tool call (e.g. polling timed out) or for debugging.
  *
- * Three models are supported, selectable via the `model` parameter:
+ * Five models are supported, selectable via the `model` parameter:
  *
- *   - seedream-v4-5    (default) Best for diagrams, posters, branded visuals
- *                      with crisp typography. Closest analog to DALL-E 3.
- *   - flux-kontext-pro Strong general-purpose design model with optional
- *                      reference image input.
- *   - mystic           Photorealistic. Use for hero photography-style images,
- *                      not for structured diagrams.
+ *   - nano-banana-pro       (default) Google Gemini 3. Best overall for
+ *                           technical diagrams, infographics, complex
+ *                           compositions, and accurate text/labels.
+ *                           Supports Google Search grounding.
+ *   - nano-banana-pro-flash Google Gemini 3.1 Flash ("Nano Banana 2" on
+ *                           fal.ai). Faster/cheaper variant of the same.
+ *   - seedream-v4-5         ByteDance Seedream 4.5. Strong typography,
+ *                           good for posters and branded visuals.
+ *   - flux-kontext-pro      Black Forest Labs Flux. General-purpose design
+ *                           model with optional reference image.
+ *   - mystic                Freepik's proprietary photorealistic model.
+ *                           Use for photo-style imagery, not diagrams.
+ *
+ * Per-model parameter quirks (aspect ratio strings, resolution casing,
+ * reference-image shape) are normalised in buildBody() so the LLM sees
+ * a single uniform schema.
  */
 
 import * as path from "node:path";
@@ -32,6 +42,8 @@ import {
 	submitTask,
 	waitForTask,
 } from "./freepik-client.js";
+
+const DEFAULT_MODEL: FreepikModel = "nano-banana-pro";
 
 // ─── Tool plumbing ────────────────────────────────────────────────────────────
 
@@ -74,16 +86,28 @@ async function safe(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 // ─── Shared parameter shapes ──────────────────────────────────────────────────
 
 const ASPECT_RATIO_DESC =
-	'Output aspect ratio. Common values: "square_1_1" (default), "widescreen_16_9", ' +
-	'"social_story_9_16", "traditional_3_4", "classic_4_3", "standard_3_2", "portrait_2_3". ' +
-	"Available values vary slightly per model; the API will reject unsupported combinations.";
+	'Output aspect ratio. Use the underscore form: "square_1_1" (default), ' +
+	'"widescreen_16_9", "social_story_9_16", "traditional_3_4", "classic_4_3", ' +
+	'"standard_3_2", "portrait_2_3", "cinematic_21_9", "social_5_4", "social_post_4_5". ' +
+	"The tool translates to each model's native form. Not every ratio is supported by " +
+	"every model — the API will reject unsupported combinations with a clear error.";
+
+const RESOLUTION_DESC =
+	'Output resolution: "1k", "2k" (default), or "4k". Only honoured by ' +
+	"nano-banana-pro, nano-banana-pro-flash, and mystic. Higher values take " +
+	"significantly longer.";
 
 const MODEL_DESC =
 	"Image model to use. " +
-	'"seedream-v4-5" (default) — best for diagrams, posters, and branded visuals with ' +
-	"crisp typography (closest analog to DALL-E 3). " +
-	'"flux-kontext-pro" — strong general-purpose design model, supports a reference image. ' +
-	'"mystic" — photorealistic; use only for photo-style images, not structured diagrams.';
+	'"nano-banana-pro" (default) — Google Gemini 3, best overall for technical ' +
+	"diagrams, infographics, complex compositions, and accurate text/labels. " +
+	'"nano-banana-pro-flash" — Gemini 3.1 Flash ("Nano Banana 2" elsewhere); ' +
+	"same feature set as the Pro, faster/cheaper. " +
+	'"seedream-v4-5" — ByteDance Seedream 4.5, strong typography, good for ' +
+	"posters and branded visuals. " +
+	'"flux-kontext-pro" — Black Forest Labs Flux, general-purpose design with ' +
+	"reference image input. " +
+	'"mystic" — Freepik\'s photorealistic model; use only for photo-style images.';
 
 // ─── Per-model request body builders ──────────────────────────────────────────
 
@@ -91,23 +115,65 @@ interface GenerateParams {
 	prompt: string;
 	model?: FreepikModel;
 	aspect_ratio?: string;
+	resolution?: "1k" | "2k" | "4k";
 	seed?: number;
 	reference_image_url?: string;
-	mystic_resolution?: "1k" | "2k" | "4k";
+	use_google_search?: boolean;
 }
+
+/** Translate our canonical underscore aspect-ratio form to Nano Banana's colon form. */
+const NANO_ASPECT: Record<string, string> = {
+	square_1_1: "1:1",
+	widescreen_16_9: "16:9",
+	social_story_9_16: "9:16",
+	traditional_3_4: "3:4",
+	classic_4_3: "4:3",
+	standard_3_2: "3:2",
+	portrait_2_3: "2:3",
+	cinematic_21_9: "21:9",
+	social_5_4: "5:4",
+	social_post_4_5: "4:5",
+};
 
 function buildBody(model: FreepikModel, p: GenerateParams): Record<string, unknown> {
 	const body: Record<string, unknown> = { prompt: p.prompt };
-	if (p.aspect_ratio) body.aspect_ratio = p.aspect_ratio;
 	if (typeof p.seed === "number") body.seed = p.seed;
 
 	switch (model) {
+		case "nano-banana-pro":
+		case "nano-banana-pro-flash": {
+			// Nano Banana uses colon-form aspect ratios and uppercase resolutions.
+			if (p.aspect_ratio) {
+				const translated = NANO_ASPECT[p.aspect_ratio];
+				if (!translated) {
+					throw new Error(
+						`aspect_ratio "${p.aspect_ratio}" is not supported by ${model}. ` +
+							`Valid values: ${Object.keys(NANO_ASPECT).join(", ")}.`,
+					);
+				}
+				body.aspect_ratio = translated;
+			}
+			if (p.resolution) body.resolution = p.resolution.toUpperCase();
+			if (p.reference_image_url) {
+				body.reference_images = [
+					{
+						image: p.reference_image_url,
+						mime_type: guessMimeFromUrl(p.reference_image_url),
+					},
+				];
+			}
+			if (p.use_google_search) body.use_google_search_tool = true;
+			return body;
+		}
+
 		case "seedream-v4-5":
-			// Seedream takes prompt, aspect_ratio, seed, enable_safety_checker.
-			// reference_image_url is not part of its schema — silently ignored.
+			// Seedream takes prompt, aspect_ratio (underscore form), seed,
+			// enable_safety_checker. No reference image, no resolution control.
+			if (p.aspect_ratio) body.aspect_ratio = p.aspect_ratio;
 			return body;
 
 		case "flux-kontext-pro":
+			if (p.aspect_ratio) body.aspect_ratio = p.aspect_ratio;
 			if (p.reference_image_url) body.input_image = p.reference_image_url;
 			return body;
 
@@ -118,14 +184,22 @@ function buildBody(model: FreepikModel, p: GenerateParams): Record<string, unkno
 			// aesthetic than the default "realism" submodel. The other Mystic
 			// submodels are tuned for portraits / photographs.
 			body.model = "flexible";
-			body.resolution = p.mystic_resolution ?? "2k";
+			if (p.aspect_ratio) body.aspect_ratio = p.aspect_ratio;
+			body.resolution = p.resolution ?? "2k";
 			// Mystic uses different reference param names and prefers base64.
-			// We accept a URL for symmetry with flux-kontext-pro and pass it
-			// through as `style_reference`; the API will accept URLs in
-			// practice even though the schema documents base64.
+			// We accept a URL for symmetry and pass it through as
+			// `style_reference`; the API will accept URLs in practice even
+			// though the schema documents base64.
 			if (p.reference_image_url) body.style_reference = p.reference_image_url;
 			return body;
 	}
+}
+
+function guessMimeFromUrl(url: string): string {
+	const lower = url.toLowerCase().split("?")[0] ?? "";
+	if (lower.endsWith(".png")) return "image/png";
+	if (lower.endsWith(".webp")) return "image/webp";
+	return "image/jpeg"; // safe default
 }
 
 /**
@@ -147,11 +221,12 @@ async function generateImage(
 ): Promise<ToolResult> {
 	const prompt = params.prompt as string;
 	const outputPath = params.output_path as string;
-	const model = ((params.model as FreepikModel) ?? "seedream-v4-5") as FreepikModel;
+	const model = ((params.model as FreepikModel) ?? DEFAULT_MODEL) as FreepikModel;
 	const aspectRatio = params.aspect_ratio as string | undefined;
+	const resolution = params.resolution as "1k" | "2k" | "4k" | undefined;
 	const seed = params.seed as number | undefined;
 	const referenceImageUrl = params.reference_image_url as string | undefined;
-	const mysticResolution = params.mystic_resolution as "1k" | "2k" | "4k" | undefined;
+	const useGoogleSearch = params.use_google_search as boolean | undefined;
 	const timeoutSeconds = (params.timeout_seconds as number | undefined) ?? 300;
 	const downloadOutput = (params.download as boolean | undefined) ?? true;
 
@@ -164,9 +239,10 @@ async function generateImage(
 		prompt,
 		model,
 		aspect_ratio: aspectRatio,
+		resolution,
 		seed,
 		reference_image_url: referenceImageUrl,
-		mystic_resolution: mysticResolution,
+		use_google_search: useGoogleSearch,
 	});
 
 	const initial = await submitTask(model, body, signal);
@@ -298,12 +374,17 @@ export function createTools(): ToolDef[] {
 				"Generate an image from a text prompt using a Freepik AI model and save it " +
 				"to a local file. Submits an async task to the Freepik API and polls until " +
 				"the image is ready (typically 10–60s).\n\n" +
-				"Best uses: hero illustrations, branded visuals, posters, design assets, " +
-				"decorative imagery for documentation.\n\n" +
-				"Note: Freepik's image models do **not** generate accurate structured " +
-				"technical diagrams (boxes, arrows, labelled flowcharts). For those, " +
-				"prefer Mermaid / Graphviz / PlantUML rendered to image. Use this tool " +
-				"for visually rich illustrative content.",
+				"Best uses: technical diagrams, infographics, hero illustrations, branded " +
+				"visuals, posters, decorative imagery for documentation.\n\n" +
+				"Default model is **nano-banana-pro** (Google Gemini 3), which is currently " +
+				"the strongest model on Freepik for technical diagrams, accurate text/labels, " +
+				"and complex compositions. Enable `use_google_search=true` when the diagram " +
+				"references real-world entities or technical concepts — it improves label " +
+				"accuracy substantially.\n\n" +
+				"For purely structural diagrams (UML, sequence diagrams, dependency graphs) " +
+				"a code-rendered tool like Mermaid / Graphviz / PlantUML is still more reliable. " +
+				"Use this tool when you want visually polished, illustrated diagrams or design " +
+				"work the LLM can describe in prose.",
 			parameters: Type.Object({
 				prompt: Type.String({
 					description:
@@ -320,30 +401,44 @@ export function createTools(): ToolDef[] {
 				model: Type.Optional(
 					Type.String({
 						description: MODEL_DESC,
-						examples: ["seedream-v4-5", "flux-kontext-pro", "mystic"],
+						examples: [
+							"nano-banana-pro",
+							"nano-banana-pro-flash",
+							"seedream-v4-5",
+							"flux-kontext-pro",
+							"mystic",
+						],
 					}),
 				),
 				aspect_ratio: Type.Optional(Type.String({ description: ASPECT_RATIO_DESC })),
+				resolution: Type.Optional(
+					Type.String({
+						description: RESOLUTION_DESC,
+						examples: ["1k", "2k", "4k"],
+					}),
+				),
 				reference_image_url: Type.Optional(
 					Type.String({
 						description:
 							"Optional HTTPS URL of a reference image to guide generation. " +
-							"Used as input_image (flux-kontext-pro) or style_reference (mystic). " +
-							"Ignored by seedream-v4-5.",
+							"Used as reference_images[0] (nano-banana-pro/flash), input_image " +
+							"(flux-kontext-pro), or style_reference (mystic). Ignored by " +
+							"seedream-v4-5.",
+					}),
+				),
+				use_google_search: Type.Optional(
+					Type.Boolean({
+						description:
+							"Nano Banana models only: enable Google Search grounding for prompts " +
+							"that reference real-world entities (places, brands, public figures, " +
+							"current events, technical concepts). Improves factual accuracy of " +
+							"labels and references in the generated image. Ignored by other models.",
 					}),
 				),
 				seed: Type.Optional(
 					Type.Number({
 						description:
 							"Random seed for reproducible generation. Omit for random output.",
-					}),
-				),
-				mystic_resolution: Type.Optional(
-					Type.String({
-						description:
-							'Output resolution when model="mystic": "1k", "2k" (default), or "4k". ' +
-							"Higher values take significantly longer.",
-						examples: ["1k", "2k", "4k"],
 					}),
 				),
 				timeout_seconds: Type.Optional(

@@ -24,7 +24,12 @@ const POLL_INTERVAL_MS = 2_000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FreepikModel = "seedream-v4-5" | "flux-kontext-pro" | "mystic";
+export type FreepikModel =
+	| "nano-banana-pro"
+	| "nano-banana-pro-flash"
+	| "seedream-v4-5"
+	| "flux-kontext-pro"
+	| "mystic";
 
 export type TaskStatus = "CREATED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 
@@ -53,6 +58,10 @@ export function endpointForModel(model: FreepikModel): string {
 			return "/v1/ai/text-to-image/seedream-v4-5";
 		case "flux-kontext-pro":
 			return "/v1/ai/text-to-image/flux-kontext-pro";
+		case "nano-banana-pro":
+			return "/v1/ai/text-to-image/nano-banana-pro";
+		case "nano-banana-pro-flash":
+			return "/v1/ai/text-to-image/nano-banana-pro-flash";
 	}
 }
 
