@@ -54,11 +54,56 @@ pi install git:git@github.com:bitmonk8/pi-config
 | review-lens-placement-broad | Files in wrong part of project structure |
 | review-lens-doc-mismatch-broad | Systemic doc-code divergence |
 
+#### Narrow Spec-Review Lenses (single spec doc)
+
+Run before `/implement` to catch problems in a spec while it is still cheap to fix.
+
+| Agent | Focus |
+|-------|-------|
+| spec-lens-clarity | Ambiguity, weasel words, vague modals, multiple interpretations |
+| spec-lens-completeness | Missing edge cases, undefined behaviors, gaps an agent would have to invent |
+| spec-lens-testability | Acceptance criteria present, verifiable, free of untestable quality words |
+| spec-lens-consistency | Internal contradictions, inconsistent terminology, conflicting requirements |
+| spec-lens-scope | Missing non-goals, scope creep, multiple features bundled, unclear priority |
+| spec-lens-assumptions | Unstated assumptions, hidden requirements, implicit dependencies |
+| spec-lens-traceability | Uniquely identifiable requirements, structure that supports referencing |
+| spec-lens-prescription | Right level of "what vs how" — over- or under-specification |
+| spec-lens-cruft | TBDs, brainstorm leftovers, stale references, decision logs, mixed phases |
+| spec-lens-naming | Concepts named multiple ways, names that don't reflect meaning |
+| spec-lens-placement | NFRs in user stories, contracts in narrative prose, mixed abstraction levels |
+| spec-lens-error-model | Failure modes, error responses, recovery, partial-failure semantics |
+| spec-lens-implementability | Could a fresh agent implement this without inventing contracts or behavior? |
+
+#### Broad Spec-Review Lenses (spec ↔ project)
+
+| Agent | Focus |
+|-------|-------|
+| spec-lens-codebase-grounding-broad | Spec references real files, symbols, APIs; current-state claims are accurate |
+| spec-lens-cross-spec-consistency-broad | Target spec doesn't contradict or duplicate other in-flight specs |
+| spec-lens-doc-alignment-broad | Spec respects existing project docs, conventions, and AGENTS.md rules |
+
+#### Plan-Review Lenses (plan ↔ spec)
+
+Run **after** `/spec-review` is clean and **before** `/implement`. Each agent receives both the spec (as source of truth) and the plan (as artifact under review).
+
+| Agent | Focus |
+|-------|-------|
+| plan-lens-spec-coverage | Every spec requirement and acceptance criterion is implemented by some plan step |
+| plan-lens-spec-fidelity | No plan step does work the spec didn't request — no scope drift |
+| plan-lens-step-atomicity | Each step is independently buildable, verifiable, reviewable |
+| plan-lens-ordering | No step depends on what a later step builds; dependencies are honored |
+| plan-lens-validation | Each step has a done-condition; each acceptance criterion is asserted |
+| plan-lens-risk | Destructive / irreversible / risky steps declare rollback, flags, telemetry |
+
+`/plan-review` also reuses these existing lenses against the plan: `spec-lens-clarity`, `spec-lens-consistency`, `spec-lens-traceability`, `spec-lens-cruft`, `spec-lens-naming`, `spec-lens-placement`, `spec-lens-assumptions`, `spec-lens-implementability`, `spec-lens-codebase-grounding-broad`, `spec-lens-doc-alignment-broad`.
+
 ### Prompt Templates
 
 | Command | Description |
 |---------|-------------|
 | `/review [target]` | Run 9 review lenses in parallel on changes (default: uncommitted) |
+| `/spec-review <spec>` | Run 13 narrow + 3 broad spec lenses in parallel on a spec |
+| `/plan-review <plan> [<spec>]` | Run 6 plan lenses + 8 reusable spec lenses + 2 broad lenses on a plan, with the spec as context |
 | `/review-fix-loop <policy>` | Autonomous review → triage → fix loop until clean |
 | `/implement <spec>` | Implement spec + automatic review/fix loop |
 | `/project-audit` | Full project audit: narrow + broad lenses, triage, interactive fixes |
