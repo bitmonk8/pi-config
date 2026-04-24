@@ -203,9 +203,17 @@ function writeSettings(profile: Profile, profileName: string): void {
 	settings.defaultProvider = profile.provider;
 	settings.defaultModel = defaultModel.id;
 
-	// Persist which profile is active for session_start restore
+	// Persist which profile + tier is active for session_start restore
 	settings._activeProfile = profileName;
+	settings._activeTier = defaultTier;
 
+	writeFileSync(getSettingsJsonPath(), JSON.stringify(settings, null, 2), "utf-8");
+}
+
+/** Persist just the active tier into settings.json. */
+function writeActiveTier(tier: typeof TIER_NAMES[number]): void {
+	const settings = readSettings();
+	settings._activeTier = tier;
 	writeFileSync(getSettingsJsonPath(), JSON.stringify(settings, null, 2), "utf-8");
 }
 
@@ -877,6 +885,7 @@ export default function workProfile(pi: ExtensionAPI) {
 		}
 
 		activeTier = tier;
+		writeActiveTier(tier);
 		updateStatus(ctx);
 		return true;
 	}
@@ -976,6 +985,11 @@ export default function workProfile(pi: ExtensionAPI) {
 		if (saved && profiles[saved]) {
 			activeProfileName = saved;
 			// Don't re-apply model on restore — just track the name
+		}
+
+		const savedTier = settings._activeTier as typeof TIER_NAMES[number] | undefined;
+		if (savedTier && TIER_NAMES.includes(savedTier)) {
+			activeTier = savedTier;
 		}
 
 		updateStatus(ctx);
