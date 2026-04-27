@@ -1,5 +1,5 @@
 ---
-description: Review/triage/fix loop until clean
+description: Review/triage/fix loop until clean (picks up project-local review lenses on the ancestry of the changed files)
 ---
 Run a review/triage/fix loop, applying this policy: $@
 
@@ -29,10 +29,24 @@ This is an autonomous loop. Do NOT stop or wait for user input between steps.
 ## Loop
 
 ### Step 1: Review
-Run the appropriate git diff command(s) to get the diff. Combine tracked diffs and untracked new files into the review payload. Use the subagent tool to run these 9 review lens agents in parallel with the diff:
-`review-lens-correctness`, `review-lens-cruft`, `review-lens-doc-mismatch`, `review-lens-error-handling`, `review-lens-naming`, `review-lens-placement`, `review-lens-separation`, `review-lens-simplification`, `review-lens-testing`
+Run the appropriate git diff command(s) to get the diff. Combine tracked diffs and untracked new files into the review payload. Extract the list of changed file paths — call this `changedPaths`.
 
-**Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery automatically. Just call it.
+Use the subagent tool in parallel mode with the entries below as tasks and `targetPaths: changedPaths`:
+
+- review-lens-correctness
+- review-lens-cruft
+- review-lens-doc-mismatch
+- review-lens-error-handling
+- review-lens-naming
+- review-lens-placement
+- review-lens-separation
+- review-lens-simplification
+- review-lens-testing
+- `*-review-lens-*` — pattern; expands to every project-local review-lens agent discovered along the ancestries of `targetPaths`. Pattern matches names with a prefix dash, so user-level `review-lens-*` agents and broad `review-lens-*-broad` agents are excluded.
+
+Each task receives the full diff as its `task` string.
+
+**Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery from packages, bundled dirs, user dirs, and project-local `.pi/agents/` directories on the ancestry of `targetPaths` automatically. Just call it.
 
 **Failed agents:** If any agent fails or returns empty output, **re-run that specific agent once**. If it fails again, note it as "agent unavailable" and continue with the results you have. Do NOT skip the lens — always attempt the re-run.
 

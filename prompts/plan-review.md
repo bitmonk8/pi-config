@@ -1,5 +1,5 @@
 ---
-description: Review an implementation plan against its spec with parallel plan-specific and reusable spec lenses
+description: Review an implementation plan against its spec with parallel plan-specific, reusable spec, and broad lenses (picks up project-local lenses on plan/spec ancestries)
 ---
 Review the plan described by: $@
 
@@ -14,9 +14,9 @@ If no plan reference was given, ask for one. If no spec reference was given:
 
 ## Steps
 
-1. **Locate inputs.** Resolve both references to concrete files (or sections within files) and read their full contents. If either is a section, extract it verbatim — the lenses must see exactly what the implementer would consume.
+1. **Locate inputs.** Resolve both references to concrete files (or sections within files) and read their full contents. If either is a section, extract it verbatim — the lenses must see exactly what the implementer would consume. Record the concrete file paths as `planPath` and `specPath`.
 
-2. **Run plan-specific lenses in parallel.** Use the subagent tool to run all 6 plan-lens agents in parallel. Pass each agent **both** the spec and the plan, clearly labeled:
+2. **Run plan-specific lenses in parallel.** Use the subagent tool with the entries below as tasks and `targetPaths: [planPath, specPath]`. Pass each agent **both** the spec and the plan, clearly labeled:
 
    - plan-lens-spec-coverage
    - plan-lens-spec-fidelity
@@ -24,8 +24,9 @@ If no plan reference was given, ask for one. If no spec reference was given:
    - plan-lens-ordering
    - plan-lens-validation
    - plan-lens-risk
+   - `*-plan-lens-*` — pattern; expands to every project-local plan-lens agent discovered on the plan/spec ancestries.
 
-3. **Run reusable spec lenses against the plan.** Use the subagent tool to run these spec lenses in parallel against the **plan** (with the spec provided as context). They flag the same kinds of issues — ambiguity, contradictions, drifted naming, cruft, missing identifiers, hidden assumptions, misplaced content, and "could a fresh agent execute this without inventing?" — applied to the plan rather than the spec:
+3. **Run reusable spec lenses against the plan.** Use the subagent tool with the entries below as tasks and `targetPaths: [planPath, specPath]`. Each task runs against the **plan** (with the spec provided as context). They flag the same kinds of issues — ambiguity, contradictions, drifted naming, cruft, missing identifiers, hidden assumptions, misplaced content, and "could a fresh agent execute this without inventing?" — applied to the plan rather than the spec:
 
    - spec-lens-clarity
    - spec-lens-consistency
@@ -36,10 +37,11 @@ If no plan reference was given, ask for one. If no spec reference was given:
    - spec-lens-assumptions
    - spec-lens-implementability
 
-4. **Run broad lenses in parallel.** Use the subagent tool to run these broad lenses against the plan with full project read access:
+4. **Run broad lenses in parallel.** Use the subagent tool with the entries below as tasks and `targetPaths: [planPath, specPath]`, running against the plan with full project read access:
 
    - spec-lens-codebase-grounding-broad — verify the plan's references to files, symbols, modules, and current behavior actually match the codebase.
    - spec-lens-doc-alignment-broad — verify the plan respects existing project documentation, conventions, and `AGENTS.md` rules.
+   - `*-spec-lens-*-broad` — pattern; expands to every project-local broad spec-lens agent on the plan/spec ancestries.
 
    **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery automatically.
 

@@ -157,7 +157,29 @@ interface SubagentDetails {
 	mode: "single" | "parallel" | "chain";
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
+	projectAgentsDirs: string[];
 	results: SingleResult[];
+}
+
+function globToRegex(pattern: string): RegExp {
+	let rx = "^";
+	for (const ch of pattern) {
+		if (ch === "*") rx += ".*";
+		else if (ch === "?") rx += ".";
+		else rx += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+	}
+	rx += "$";
+	return new RegExp(rx);
+}
+
+function isGlob(spec: string): boolean {
+	return spec.includes("*") || spec.includes("?");
+}
+
+function expandAgentSpec(spec: string, agents: { name: string }[]): string[] {
+	if (!isGlob(spec)) return [spec];
+	const re = globToRegex(spec);
+	return agents.filter((a) => re.test(a.name)).map((a) => a.name);
 }
 
 function getFinalOutput(messages: Message[]): string {
@@ -411,20 +433,45 @@ const ChainItem = Type.Object({
 });
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
-	description: 'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
-	default: "user",
+	description:
+		'Which agent directories to use. Default: "both" (user agents + any project-local `.pi/agents/` on the cwd walk-up or the targetPaths ancestries). Use "user" to suppress project-local agents entirely.',
+	default: "both",
 });
 
 const SubagentParams = Type.Object({
-	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
+	agent: Type.Optional(
+		Type.String({
+			description:
+				"Name of the agent to invoke (single mode). May be a glob (e.g. `*review-lens-*`); if it matches multiple agents, the call fans out into parallel mode.",
+		}),
+	),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
-	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
-	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+	tasks: Type.Optional(
+		Type.Array(TaskItem, {
+			description:
+				"Array of {agent, task} for parallel execution. `agent` may be a glob (e.g. `*review-lens-*`); each match fans out as its own task with the same `task` string.",
+		}),
+	),
+	chain: Type.Optional(
+		Type.Array(ChainItem, {
+			description:
+				"Array of {agent, task} for sequential execution. `agent` must be an exact name — globs are rejected in chain mode because fan-out is not meaningful with data flow.",
+		}),
+	),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
-		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
+		Type.Boolean({
+			description: "Ignored. Retained for schema compatibility. Project-local agents run without confirmation.",
+			default: false,
+		}),
 	),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
+	targetPaths: Type.Optional(
+		Type.Array(Type.String(), {
+			description:
+				"File or directory paths the task concerns. For each path, subagent walks up to the git root collecting every `.pi/agents/` directory along the way, widening the agent pool for path-driven project-local lens discovery. Typically the files in the diff, the spec path, or the plan path.",
+		}),
+	),
 });
 
 export default function (pi: ExtensionAPI) {
@@ -434,16 +481,64 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			'Default agent scope is "user" (from ~/.pi/agent/agents).',
-			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
+			"Default agent scope is \"both\" — user agents plus any project-local `.pi/agents/` found on the cwd walk-up or on the ancestries of `targetPaths`.",
+			"`agent` in single and tasks[] entries may be a glob (e.g. `*review-lens-*`); matches fan out to parallel tasks.",
 		].join(" "),
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			const agentScope: AgentScope = params.agentScope ?? "user";
-			const discovery = discoverAgents(ctx.cwd, agentScope);
+			const agentScope: AgentScope = params.agentScope ?? "both";
+			const discovery = discoverAgents(ctx.cwd, agentScope, params.targetPaths);
 			const agents = discovery.agents;
-			const confirmProjectAgents = params.confirmProjectAgents ?? true;
+
+			// Expand agent globs before mode detection.
+			// tasks[]: each glob fans out into one entry per match.
+			if (params.tasks && params.tasks.length > 0) {
+				const expanded: typeof params.tasks = [];
+				for (const t of params.tasks) {
+					const matches = expandAgentSpec(t.agent, agents);
+					if (matches.length === 0) {
+						// No match — keep the original spec; runSingleAgent will surface
+						// an "Unknown agent" error with the available list.
+						expanded.push(t);
+						continue;
+					}
+					for (const name of matches) expanded.push({ ...t, agent: name });
+				}
+				params.tasks = expanded;
+			}
+			// single mode: if `agent` is a glob, convert to parallel mode.
+			if (params.agent && params.task && isGlob(params.agent)) {
+				const matches = expandAgentSpec(params.agent, agents);
+				if (matches.length >= 1) {
+					params.tasks = matches.map((name) => ({ agent: name, task: params.task as string }));
+					params.agent = undefined;
+					params.task = undefined;
+				}
+			}
+			// chain mode: reject globs.
+			if (params.chain) {
+				for (const step of params.chain) {
+					if (isGlob(step.agent)) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Glob pattern not allowed in chain mode: "${step.agent}". Use an exact agent name.`,
+								},
+							],
+							details: {
+								mode: "chain",
+								agentScope,
+								projectAgentsDir: discovery.projectAgentsDir,
+								projectAgentsDirs: discovery.projectAgentsDirs,
+								results: [],
+							},
+							isError: true,
+						};
+					}
+				}
+			}
 
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -456,6 +551,7 @@ export default function (pi: ExtensionAPI) {
 					mode,
 					agentScope,
 					projectAgentsDir: discovery.projectAgentsDir,
+					projectAgentsDirs: discovery.projectAgentsDirs,
 					results,
 				});
 
@@ -472,30 +568,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
-				const requestedAgentNames = new Set<string>();
-				if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
-				if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
-				if (params.agent) requestedAgentNames.add(params.agent);
-
-				const projectAgentsRequested = Array.from(requestedAgentNames)
-					.map((name) => agents.find((a) => a.name === name))
-					.filter((a): a is AgentConfig => a?.source === "project");
-
-				if (projectAgentsRequested.length > 0) {
-					const names = projectAgentsRequested.map((a) => a.name).join(", ");
-					const dir = discovery.projectAgentsDir ?? "(unknown)";
-					const ok = await ctx.ui.confirm(
-						"Run project-local agents?",
-						`Agents: ${names}\nSource: ${dir}\n\nProject agents are repo-controlled. Only continue for trusted repositories.`,
-					);
-					if (!ok)
-						return {
-							content: [{ type: "text", text: "Canceled: project-local agents not approved." }],
-							details: makeDetails(hasChain ? "chain" : hasTasks ? "parallel" : "single")([]),
-						};
-				}
-			}
+			// Project-local agents run without confirmation — trusted-repo usage model.
 
 			if (params.chain && params.chain.length > 0) {
 				const results: SingleResult[] = [];

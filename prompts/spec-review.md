@@ -1,5 +1,5 @@
 ---
-description: Review a spec with parallel narrow- and broad-lens spec reviewers
+description: Review a spec with parallel narrow and broad spec-review lenses (picks up project-local lenses on the spec's ancestry)
 ---
 Review the spec described by: $@
 
@@ -10,9 +10,9 @@ If no argument was given, ask for a spec reference. Examples:
 
 ## Steps
 
-1. **Locate the spec.** Resolve the reference to a concrete file (or section within a file) and read its full contents. If the reference is a section, extract that section verbatim — the lenses must see exactly what the implementer would consume.
+1. **Locate the spec.** Resolve the reference to a concrete file (or section within a file) and read its full contents. If the reference is a section, extract that section verbatim — the lenses must see exactly what the implementer would consume. Record the concrete spec path as `specPath`.
 
-2. **Run narrow lenses in parallel.** Use the subagent tool to run all 13 narrow spec-lens agents in parallel, each with the full spec contents:
+2. **Run narrow lenses in parallel.** Use the subagent tool with the entries below as tasks and `targetPaths: [specPath]`. Each task receives the full spec contents.
 
    - spec-lens-clarity
    - spec-lens-completeness
@@ -27,12 +27,14 @@ If no argument was given, ask for a spec reference. Examples:
    - spec-lens-placement
    - spec-lens-error-model
    - spec-lens-implementability
+   - `*-spec-lens-*` — pattern; expands to every project-local narrow spec-lens agent discovered on the spec's ancestry. Pattern matches names with a prefix dash, so user-level `spec-lens-*` and broad `spec-lens-*-broad` are excluded.
 
-3. **Run broad lenses in parallel.** Use the subagent tool to run the 3 broad spec-lens agents in parallel. Pass the spec path (and contents) so each can read the surrounding project as needed:
+3. **Run broad lenses in parallel.** Use the subagent tool with the entries below as tasks and `targetPaths: [specPath]`. Each task receives the spec path and contents so agents can read the surrounding project as needed.
 
    - spec-lens-codebase-grounding-broad
    - spec-lens-cross-spec-consistency-broad
    - spec-lens-doc-alignment-broad
+   - `*-spec-lens-*-broad` — pattern; expands to every project-local broad spec-lens agent discovered on the spec's ancestry.
 
    **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery automatically.
 

@@ -1,5 +1,5 @@
 ---
-description: Audit a target with narrow and broad lens reviews, triage, and interactive fixes
+description: Audit a target with narrow and broad lens reviews, triage, and interactive fixes (picks up project-local lenses on target ancestries)
 ---
 Perform a full audit of: **$ARGUMENTS**
 
@@ -8,14 +8,25 @@ Perform a full audit of: **$ARGUMENTS**
 1. Identify the files to audit based on the target (`$ARGUMENTS`):
    - For the entire project: run `git ls-files` to enumerate all tracked files.
    - For a specific directory or file path: enumerate files within the given path.
+   Record the enumerated list as `allPaths`.
 2. Classify each file as code or documentation.
 3. Write `docs/AUDIT.md` with the review plan: target, file list, agent counts, batching strategy.
 
 ## Phase 2: Narrow-lens reviews
 
-For each file, use the subagent tool to run all 9 narrow review lens agents. Each invocation covers exactly ONE file and ONE lens. Run in batches of up to 16 parallel agents.
+For each file `f` in `allPaths`, use the subagent tool in parallel mode with the entries below as tasks and `targetPaths: [f]`. Run in batches of up to 16 parallel tasks.
 
-Agents: review-lens-correctness, review-lens-simplification, review-lens-testing, review-lens-cruft, review-lens-separation, review-lens-naming, review-lens-placement, review-lens-doc-mismatch, review-lens-error-handling
+Agents:
+- review-lens-correctness
+- review-lens-simplification
+- review-lens-testing
+- review-lens-cruft
+- review-lens-separation
+- review-lens-naming
+- review-lens-placement
+- review-lens-doc-mismatch
+- review-lens-error-handling
+- `*-review-lens-*` — pattern; expands to every project-local review-lens agent on `f`'s ancestry.
 
 Collect findings as:
 ```
@@ -28,8 +39,15 @@ Skip entries with no findings.
 
 ## Phase 3: Broad-lens reviews
 
-Use subagent to run all 6 broad lens agents in parallel with a summary of the audit target:
-review-lens-correctness-broad, review-lens-simplification-broad, review-lens-separation-broad, review-lens-naming-broad, review-lens-placement-broad, review-lens-doc-mismatch-broad
+Use subagent in parallel mode with the entries below as tasks and `targetPaths: allPaths`, each task receiving a summary of the audit target:
+
+- review-lens-correctness-broad
+- review-lens-simplification-broad
+- review-lens-separation-broad
+- review-lens-naming-broad
+- review-lens-placement-broad
+- review-lens-doc-mismatch-broad
+- `*-review-lens-*-broad` — pattern; expands to every project-local broad review-lens agent on the target ancestries.
 
 Only report cross-file issues.
 

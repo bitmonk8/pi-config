@@ -20,7 +20,10 @@ export interface AgentConfig {
 
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
+	/** Nearest `.pi/agents/` walking up from cwd. Kept for renderers / debug output. */
 	projectAgentsDir: string | null;
+	/** All project-agent directories actually loaded this invocation (cwd walk-up + targetPaths walk-ups). */
+	projectAgentsDirs: string[];
 }
 
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
@@ -94,21 +97,87 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
+function findGitRoot(startDir: string): string | null {
+	let cur = path.resolve(startDir);
+	while (true) {
+		if (isDirectory(path.join(cur, ".git"))) return cur;
+		const parent = path.dirname(cur);
+		if (parent === cur) return null;
+		cur = parent;
+	}
+}
+
+/**
+ * For each path in `paths`, walk up from the path's directory to the git root
+ * (or filesystem root if no git root) collecting every `.pi/agents/` along the
+ * way. Returns a deduplicated list.
+ *
+ * Enables path-driven project-local agent discovery: when a review command
+ * runs against files under A/B/C/, lenses in A/.pi/agents/, A/B/.pi/agents/,
+ * and A/B/C/.pi/agents/ are all picked up automatically.
+ */
+function findProjectAgentsDirsForPaths(paths: string[]): string[] {
+	const dirs = new Set<string>();
+	for (const p of paths) {
+		if (!p) continue;
+		const resolved = path.resolve(p);
+		let startDir: string;
+		try {
+			startDir =
+				fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
+					? resolved
+					: path.dirname(resolved);
+		} catch {
+			startDir = path.dirname(resolved);
+		}
+		const gitRoot = findGitRoot(startDir);
+		let cur = startDir;
+		while (true) {
+			const candidate = path.join(cur, ".pi", "agents");
+			if (isDirectory(candidate)) dirs.add(candidate);
+			if (gitRoot && cur === gitRoot) break;
+			const parent = path.dirname(cur);
+			if (parent === cur) break;
+			cur = parent;
+		}
+	}
+	return [...dirs];
+}
+
 // Resolve the bundled agents directory relative to this file
 const BUNDLED_AGENTS_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..", "agents");
 
-export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
+export function discoverAgents(
+	cwd: string,
+	scope: AgentScope,
+	targetPaths?: string[],
+): AgentDiscoveryResult {
 	const userDir = path.join(getAgentDir(), "agents");
-	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
+	const nearest = findNearestProjectAgentsDir(cwd);
 
-	// Load bundled agents first (lowest priority), then user, then project
+	// Existing behaviour: nearest `.pi/agents/` walking up from cwd.
+	const projectDirsSet = new Set<string>();
+	if (nearest) projectDirsSet.add(nearest);
+
+	// New behaviour: walk up from each target path collecting every `.pi/agents/`
+	// along the ancestry. Enables project-local and sub-project-local lenses to
+	// activate automatically when the review target lives inside their tree.
+	if (targetPaths && targetPaths.length > 0) {
+		for (const d of findProjectAgentsDirsForPaths(targetPaths)) {
+			projectDirsSet.add(d);
+		}
+	}
+	const projectAgentsDirs = [...projectDirsSet];
+
+	// Load bundled agents first (lowest priority), then user, then project.
 	const bundledAgents = loadAgentsFromDir(BUNDLED_AGENTS_DIR, "user");
 	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
-	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+	const projectAgents =
+		scope === "user" ? [] : projectAgentsDirs.flatMap((d) => loadAgentsFromDir(d, "project"));
 
 	const agentMap = new Map<string, AgentConfig>();
 
-	// Bundled agents are always loaded as baseline (can be overridden by user/project)
+	// Bundled agents are always loaded as baseline (can be overridden by user/project).
 	for (const agent of bundledAgents) agentMap.set(agent.name, agent);
 
 	if (scope === "both") {
@@ -120,7 +189,11 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 		for (const agent of projectAgents) agentMap.set(agent.name, agent);
 	}
 
-	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+	return {
+		agents: Array.from(agentMap.values()),
+		projectAgentsDir: nearest,
+		projectAgentsDirs,
+	};
 }
 
 export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {

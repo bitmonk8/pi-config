@@ -1,5 +1,5 @@
 ---
-description: Implement a spec with automatic review/fix loop
+description: Implement a spec with automatic review/fix loop (picks up project-local review lenses on the spec/diff ancestry)
 ---
 Implement the task described in $@
 
@@ -7,9 +7,11 @@ If no argument was given, ask for a spec reference. Examples:
 - `/implement specs/MY_FEATURE.md`
 - `/implement "the task described in docs/TODO.md under 'Auth rewrite'"`
 
+Record the concrete spec path as `specPath`.
+
 ## Steps
 
-1. **Implement** — Use the subagent tool to run the implementer agent with the full spec contents. It will implement the code, update docs, and delete the spec file.
+1. **Implement** — Use the subagent tool to run the implementer agent with the full spec contents. Pass `targetPaths: [specPath]` so any project-local agents on the spec's ancestry are also discoverable. The implementer will implement the code, update docs, and delete the spec file.
 
 2. **Review/Fix Loop** — Immediately after the implementer finishes, run a review/fix loop on all uncommitted changes until clean.
 
@@ -21,10 +23,24 @@ If no argument was given, ask for a spec reference. Examples:
 
    ### Loop
 
-   **A. Review** — Run `git diff` and `git diff --cached`. Combine tracked diffs and untracked new files into the review payload. Use the subagent tool to run these 9 review lens agents in parallel with the diff:
-   `review-lens-correctness`, `review-lens-cruft`, `review-lens-doc-mismatch`, `review-lens-error-handling`, `review-lens-naming`, `review-lens-placement`, `review-lens-separation`, `review-lens-simplification`, `review-lens-testing`
+   **A. Review** — Run `git diff` and `git diff --cached`. Combine tracked diffs and untracked new files into the review payload. Extract the list of changed file paths — call this `changedPaths`.
 
-   **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery from packages, bundled dirs, and user dirs automatically. Just call it.
+   Use the subagent tool in parallel mode with the entries below as tasks and `targetPaths: changedPaths`:
+
+   - review-lens-correctness
+   - review-lens-cruft
+   - review-lens-doc-mismatch
+   - review-lens-error-handling
+   - review-lens-naming
+   - review-lens-placement
+   - review-lens-separation
+   - review-lens-simplification
+   - review-lens-testing
+   - `*-review-lens-*` — pattern; expands to every project-local review-lens agent on the ancestries of the changed files.
+
+   Each task receives the full diff as its `task` string.
+
+   **Do not** check whether agents exist before calling the subagent tool. The tool handles agent discovery from packages, bundled dirs, user dirs, and project-local `.pi/agents/` directories on the ancestry of `targetPaths` automatically. Just call it.
 
    **Failed agents:** If any agent fails or returns empty output, **re-run that specific agent once**. If it fails again, note it as "agent unavailable" and continue with the results you have. Do NOT skip the lens — always attempt the re-run.
 
