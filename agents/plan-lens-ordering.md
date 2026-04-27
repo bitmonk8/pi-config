@@ -1,7 +1,7 @@
 ---
 name: plan-lens-ordering
 description: Analyzes plans for step ordering and dependency issues — no step should rely on what a later step builds
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

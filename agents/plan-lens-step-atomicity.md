@@ -1,7 +1,7 @@
 ---
 name: plan-lens-step-atomicity
 description: Analyzes plan steps for appropriate size and shape — each step should be independently buildable, verifiable, and reviewable
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: review-lens-simplification-broad
 description: Cross-file simplification — unnecessary abstraction layers, overly complex module relationships
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

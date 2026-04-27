@@ -1,7 +1,7 @@
 ---
 name: triage-assessor
 description: Validates findings, filters false positives, and assigns structured cost/benefit metadata
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: spec-lens-prescription
 description: Analyzes specs for the right level of "what vs how" — over-prescription that handcuffs the implementer, or under-prescription that leaves contracts undefined
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

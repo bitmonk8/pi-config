@@ -1,7 +1,7 @@
 ---
 name: spec-lens-completeness
 description: Analyzes specs for missing edge cases, undefined behaviors, empty/limit cases, and gaps a fresh agent would have to invent answers for
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

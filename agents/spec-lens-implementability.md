@@ -1,7 +1,7 @@
 ---
 name: spec-lens-implementability
 description: Meta-lens — could a fresh agent implement this spec end-to-end without inventing contracts, paths, schemas, or product behavior?
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

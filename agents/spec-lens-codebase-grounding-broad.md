@@ -1,7 +1,7 @@
 ---
 name: spec-lens-codebase-grounding-broad
 description: Verifies that spec references to files, symbols, APIs, and current-state assumptions are accurate against the actual codebase
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

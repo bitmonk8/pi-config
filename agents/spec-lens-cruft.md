@@ -1,7 +1,7 @@
 ---
 name: spec-lens-cruft
 description: Analyzes specs for cruft — TBDs, brainstorm leftovers, stale references, decision logs, "Phase 2" mixed with current scope
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

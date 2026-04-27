@@ -1,7 +1,7 @@
 ---
 name: spec-lens-clarity
 description: Analyzes specs for ambiguity — weasel words, vague modals, statements with multiple plausible interpretations
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

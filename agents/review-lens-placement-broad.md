@@ -1,7 +1,7 @@
 ---
 name: review-lens-placement-broad
 description: Cross-file placement — files in wrong part of project structure, scattered functionality
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

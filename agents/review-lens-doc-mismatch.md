@@ -1,7 +1,7 @@
 ---
 name: review-lens-doc-mismatch
 description: Analyzes code for documentation-implementation mismatch — behavior vs docs divergence
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

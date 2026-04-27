@@ -1,7 +1,7 @@
 ---
 name: review-lens-error-handling
 description: Analyzes code for error handling issues — silent failures, swallowed errors, missing error surfacing
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: review-lens-doc-mismatch-broad
 description: Systemic doc-code divergence — documented features that don't exist, architecture docs that don't match reality
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

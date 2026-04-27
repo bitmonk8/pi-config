@@ -1,7 +1,7 @@
 ---
 name: plan-lens-risk
 description: Analyzes plans for risk handling — destructive, irreversible, or risky steps must call out mitigation, rollback, feature flags, or migration strategy
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

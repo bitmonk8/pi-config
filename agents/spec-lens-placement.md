@@ -1,7 +1,7 @@
 ---
 name: spec-lens-placement
 description: Analyzes specs for placement issues — content in the wrong section, mixed levels of abstraction, NFRs buried in user stories
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

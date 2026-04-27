@@ -1,7 +1,7 @@
 ---
 name: spec-lens-doc-alignment-broad
 description: Checks the spec against project documentation, conventions, and AGENTS.md rules — does it respect existing architecture, vocabulary, and process?
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

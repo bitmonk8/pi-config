@@ -1,7 +1,7 @@
 ---
 name: spec-lens-testability
 description: Analyzes specs for testability — presence of acceptance criteria, verifiability, untestable quality words
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

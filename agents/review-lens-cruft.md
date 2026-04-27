@@ -1,7 +1,7 @@
 ---
 name: review-lens-cruft
 description: Analyzes code for historical cruft — stale comments, dead code, outdated references, leftover TODOs
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

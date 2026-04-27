@@ -1,7 +1,7 @@
 ---
 name: review-lens-naming-broad
 description: Cross-file naming — same concept named differently across files, misleading module names
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: spec-lens-traceability
 description: Analyzes specs for traceability — uniquely identifiable requirements, structure that supports referencing, review, and test mapping
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

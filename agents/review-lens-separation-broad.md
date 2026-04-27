@@ -1,7 +1,7 @@
 ---
 name: review-lens-separation-broad
 description: Cross-file separation of concerns — overlapping modules, circular dependencies, unclear ownership
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

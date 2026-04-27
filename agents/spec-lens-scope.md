@@ -1,7 +1,7 @@
 ---
 name: spec-lens-scope
 description: Analyzes specs for scope problems — missing non-goals, scope creep, multiple features bundled, unclear priority
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

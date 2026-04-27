@@ -1,7 +1,7 @@
 ---
 name: spec-lens-error-model
 description: Analyzes specs for failure-mode coverage — error responses, recovery, rollback, partial-failure semantics
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: plan-lens-spec-coverage
 description: Verifies that every requirement and acceptance criterion in the spec is implemented by at least one step in the plan
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

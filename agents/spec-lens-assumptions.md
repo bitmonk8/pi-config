@@ -1,7 +1,7 @@
 ---
 name: spec-lens-assumptions
 description: Analyzes specs for unstated assumptions, hidden requirements, and implicit dependencies
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: plan-lens-spec-fidelity
 description: Verifies that the plan does not silently expand scope — every plan step traces back to something the spec actually requires
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

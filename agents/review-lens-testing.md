@@ -1,7 +1,7 @@
 ---
 name: review-lens-testing
 description: Analyzes code for testing and testability issues — missing coverage, hard-to-test patterns, silently skipping tests
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

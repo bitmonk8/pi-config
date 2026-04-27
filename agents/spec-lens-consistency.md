@@ -1,7 +1,7 @@
 ---
 name: spec-lens-consistency
 description: Analyzes specs for internal contradictions, conflicting requirements, and inconsistent terminology
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

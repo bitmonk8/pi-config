@@ -1,7 +1,7 @@
 ---
 name: plan-lens-validation
 description: Verifies that each plan step has an explicit verification gate, and that every spec acceptance criterion is asserted by some step
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

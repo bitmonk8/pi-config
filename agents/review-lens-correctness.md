@@ -1,7 +1,7 @@
 ---
 name: review-lens-correctness
 description: Analyzes code for correctness — logic errors, off-by-one, race conditions, missing error handling, broken invariants
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: review-lens-placement
 description: Analyzes code for placement issues — entities in the wrong location, layer violations
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

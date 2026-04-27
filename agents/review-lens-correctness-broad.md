@@ -1,7 +1,7 @@
 ---
 name: review-lens-correctness-broad
 description: Cross-file correctness — interface contract violations, inconsistent assumptions between modules
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

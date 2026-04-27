@@ -1,7 +1,7 @@
 ---
 name: review-lens-naming
 description: Analyzes code for naming and responsibility issues — names that don't reflect behavior, unclear responsibilities
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

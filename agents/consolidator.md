@@ -1,7 +1,7 @@
 ---
 name: consolidator
 description: Deduplicates, merges, and organizes review findings from per-lens files into a single committable report
-tools: read, grep, find, ls, write
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

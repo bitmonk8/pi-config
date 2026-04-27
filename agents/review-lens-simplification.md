@@ -1,7 +1,7 @@
 ---
 name: review-lens-simplification
 description: Analyzes code for unnecessary complexity — redundant code, over-abstraction, things that could be simpler
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 

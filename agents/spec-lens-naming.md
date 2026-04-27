@@ -1,7 +1,7 @@
 ---
 name: spec-lens-naming
 description: Analyzes specs for naming and terminology — terms that don't reflect their concept, the same concept named multiple ways
-tools: read, grep, find, ls
+tools: read, grep, find, ls, bash, edit, write
 model: active/balanced
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: spec-lens-cross-spec-consistency-broad
 description: Checks the target spec against other in-flight specs in the project for contradictions, scope overlap, and terminology drift
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, edit, write
 model: active/smart
 ---
 
